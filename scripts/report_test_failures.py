@@ -1,4 +1,4 @@
-"""把 JUnit 失败结果发布成 check-run 注解与 job summary，便于无日志环境排障。"""
+"""把 JUnit 失败与编译错误发布成 check-run 注解与 job summary，便于无日志环境排障。"""
 import glob
 import json
 import os
@@ -32,6 +32,37 @@ with api(f"https://api.github.com/repos/{repo}/commits/{sha}/check-runs") as r:
 print("check_run_id =", check_id)
 
 anns = []
+
+# 编译错误：Kotlin 编译器输出行以 "e: " 开头，格式 e: <path>:<line>:<col> <message>
+out = "/tmp/test_out.txt"
+if os.path.exists(out):
+    for line in open(out, encoding="utf-8", errors="replace"):
+        if not line.startswith("e: "):
+            continue
+        rest = line.strip()[3:].replace("file://", "")
+        parts = rest.split(":", 2)
+        path = "scripts/report_test_failures.py"
+        line_no = 1
+        message = rest
+        if len(parts) == 3:
+            idx = parts[0].find("app/")
+            if idx >= 0:
+                path = parts[0][idx:]
+            try:
+                line_no = max(1, int(parts[1]))
+            except ValueError:
+                pass
+            message = parts[2].strip()
+        anns.append({
+            "path": path,
+            "start_line": line_no,
+            "end_line": line_no,
+            "annotation_level": "failure",
+            "title": "compile error",
+            "message": message[:500],
+        })
+
+# 单测失败：解析 JUnit XML
 for f in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
     try:
         root = ET.parse(f).getroot()
@@ -57,14 +88,14 @@ for f in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
                 "message": msg[:500],
             })
 
-print("failures:", len(anns))
+print("findings:", len(anns))
 
 summary = os.environ.get("GITHUB_STEP_SUMMARY")
 if summary and anns:
     with open(summary, "a", encoding="utf-8") as fh:
-        fh.write("## Unit test failures\n\n")
+        fh.write("## Unit test / compile failures\n\n")
         for a in anns:
-            fh.write("- **" + a["title"] + "** (`" + a["path"] + "`)\n\n  ```\n  " + a["message"] + "\n  ```\n\n")
+            fh.write("- **" + a["title"] + "** (`" + a["path"] + ":" + str(a["start_line"]) + "`)\n\n  ```\n  " + a["message"] + "\n  ```\n\n")
 
 if check_id and anns:
     try:

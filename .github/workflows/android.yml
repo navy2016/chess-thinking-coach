@@ -22,7 +22,11 @@ jobs:
           java-version: '17'
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: |
+          ./gradlew testDebugUnitTest --stacktrace > /tmp/test_out.txt 2>&1
+          code=$?
+          cat /tmp/test_out.txt
+          exit $code
 
       - name: Report test failures
         if: failure()
