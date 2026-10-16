@@ -146,7 +146,7 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
 
     override fun squareDesc(pos: GoPosition, square: Int): String = coord(pos.size, square)
 
-    override fun notation(pos: GoPosition, move: Move): String {
+    fun notation(pos: GoPosition, move: Move): String {
         if (move.from < 0) return (if (pos.toMove == 0) "黑" else "白") + "停一手"
         return (if (pos.toMove == 0) "黑 " else "白 ") + coord(pos.size, move.to)
     }

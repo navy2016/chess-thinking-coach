@@ -124,8 +124,8 @@ class GameActivity : AppCompatActivity() {
         tts = TtsManager(this)
         if (resumeMoves.isNotEmpty()) {
             for (m in resumeMoves) {
-                val grade = Grade.entries.firstOrNull { it.label == m.grade }
-                val rating = if (m.grade.isNotEmpty()) {
+                val grade = Grade.entries.firstOrNull { it.label == m.gradeName }
+                val rating = if (m.gradeName.isNotEmpty()) {
                     MoveRating(m.notation, m.loss, grade ?: Grade.GOOD, null, m.explanation)
                 } else null
                 session.commitReview(Move(m.from, m.to, m.promo), rating)
@@ -668,7 +668,7 @@ class GameActivity : AppCompatActivity() {
             (if (reviewResult.isNotEmpty()) " · " + reviewResult else "")
         val m = reviewMoves.getOrNull(reviewIndex)
         coachText.text = if (m != null) {
-            val g = if (m.grade.isNotEmpty()) "【" + m.grade + "】" else ""
+            val g = if (m.gradeName.isNotEmpty()) "【" + m.gradeName + "】" else ""
             "第 " + (reviewIndex + 1) + " 手  " + m.notation + g + "\n" + m.explanation
         } else {
             "点击「下一步」开始打谱回顾，每一步都有当时的评分与讲解。"
@@ -686,8 +686,8 @@ class GameActivity : AppCompatActivity() {
         session = newSession()
         for (i in 0..target) {
             val m = reviewMoves[i]
-            val grade = Grade.entries.firstOrNull { it.label == m.grade }
-            val rating = if (m.grade.isNotEmpty()) {
+            val grade = Grade.entries.firstOrNull { it.label == m.gradeName }
+            val rating = if (m.gradeName.isNotEmpty()) {
                 MoveRating(m.notation, m.loss, grade ?: Grade.GOOD, null, m.explanation)
             } else null
             session.commitReview(Move(m.from, m.to, m.promo), rating)

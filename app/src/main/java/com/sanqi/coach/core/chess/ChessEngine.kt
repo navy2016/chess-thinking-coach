@@ -316,7 +316,7 @@ class ChessEngine : GameEngine<ChessPosition> {
         return ('a' + x).toString() + (y + 1)
     }
 
-    override fun notation(pos: ChessPosition, move: Move): String {
+    fun notation(pos: ChessPosition, move: Move): String {
         val piece = abs(pos.board[move.from])
         if (piece == 1 && abs(move.to - move.from) == 2) {
             return if (move.to > move.from) "O-O" else "O-O-O"

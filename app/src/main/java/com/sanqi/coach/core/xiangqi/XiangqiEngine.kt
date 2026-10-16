@@ -307,7 +307,7 @@ class XiangqiEngine : GameEngine<XiangqiPosition> {
     private fun lineOf(x: Int, red: Boolean): String =
         if (red) CN_NUM[8 - x] else (x + 1).toString()
 
-    override fun notation(pos: XiangqiPosition, move: Move): String {
+    fun notation(pos: XiangqiPosition, move: Move): String {
         val code = pos.board[move.from]
         val red = code > 0
         val a = abs(code)
