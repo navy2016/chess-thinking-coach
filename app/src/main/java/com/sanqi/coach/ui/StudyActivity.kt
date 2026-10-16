@@ -107,6 +107,7 @@ class StudyActivity : AppCompatActivity() {
         blp.topMargin = 40
         listRoot!!.addView(back, blp)
 
+        scroll.fitsSystemWindows = true
         setContentView(scroll)
     }
 
@@ -183,6 +184,7 @@ class StudyActivity : AppCompatActivity() {
         root.addView(row, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
+        root.fitsSystemWindows = true
         setContentView(root)
         refresh()
     }

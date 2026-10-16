@@ -112,6 +112,7 @@ class PuzzleActivity : AppCompatActivity() {
         blp.topMargin = 40
         listRoot!!.addView(back, blp)
 
+        scroll.fitsSystemWindows = true
         setContentView(scroll)
     }
 
@@ -181,6 +182,7 @@ class PuzzleActivity : AppCompatActivity() {
         root.addView(row, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
+        root.fitsSystemWindows = true
         setContentView(root)
         infoText.text = p.desc + "\n\n轮到你走：找到那关键的一手。"
         refreshBoard()

@@ -71,6 +71,7 @@ class ReplayListActivity : AppCompatActivity() {
                 addItem(g)
             }
         }
+        scroll.fitsSystemWindows = true
         setContentView(scroll)
     }
 

@@ -86,6 +86,7 @@ class HomeActivity : AppCompatActivity() {
         r2.topMargin = 20
         root.addView(row2, r2)
 
+        scroll.fitsSystemWindows = true
         setContentView(scroll)
     }
 

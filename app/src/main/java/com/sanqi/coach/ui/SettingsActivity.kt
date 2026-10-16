@@ -93,6 +93,7 @@ class SettingsActivity : AppCompatActivity() {
         nlp.topMargin = 64
         root.addView(note, nlp)
 
+        scroll.fitsSystemWindows = true
         setContentView(scroll)
     }
 }

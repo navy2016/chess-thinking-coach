@@ -242,6 +242,7 @@ class GameActivity : AppCompatActivity() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         titleView.text = kindLabel(kind) + if (mode == CoachSession.Mode.REVIEW) " · 复盘" else ""
+        root.fitsSystemWindows = true
         setContentView(root)
     }
 
