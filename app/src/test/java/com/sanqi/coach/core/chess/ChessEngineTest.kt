@@ -127,7 +127,7 @@ class ChessEngineTest {
         assertEquals("O-O", e.notation(pos(castles, true, 3), Move(4, 6)))
         assertEquals("O-O-O", e.notation(pos(castles, true, 3), Move(4, 2)))
 
-        val disamb = board(1 to 5, 34 to 5, 4 to 1, 56 to -1)
+        val disamb = board(1 to 5, 35 to 5, 4 to 1, 56 to -1)
         assertEquals("Nbc3", e.notation(pos(disamb, true), Move(1, 18)))
     }
 

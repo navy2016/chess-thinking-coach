@@ -64,7 +64,7 @@ class GoEngineTest {
         // 黑：(1,0)=1,(0,1)=9,(1,2)=19；白：(2,0)=2,(2,2)=21,(3,1)=22,(1,1)=10
         val board = IntArray(81)
         board[1] = 1; board[9] = 1; board[19] = 1
-        board[2] = 2; board[21] = 2; board[12] = 2; board[10] = 2
+        board[2] = 2; board[20] = 2; board[12] = 2; board[10] = 2
         var p = pos9(board, 0)
         // 黑 (2,1)=11 提白 (1,1)
         val r = e.applyMove(p, Move(11, 11))
