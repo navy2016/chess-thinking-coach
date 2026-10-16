@@ -43,3 +43,13 @@ jobs:
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Release APK
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0-$(git rev-parse --short HEAD)"
+          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk \
+            --title "三棋思考教练 $TAG" \
+            --notes "自建 APK（debug 签名）。手机浏览器直接下载后安装即可；如提示未知来源，允许安装即可。落子前替你推演，落子后讲给你听。"
