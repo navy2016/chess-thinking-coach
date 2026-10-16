@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#1B5E20</color>
+    <color name="brandDark">#0D3B12</color>
+    <color name="brandLight">#4C8C50</color>
+    <color name="ink">#1C1B17</color>
+    <color name="paper">#F6F1E4</color>
+    <color name="boardWood">#E7C58F</color>
+    <color name="boardWoodDark">#B98E52</color>
+</resources>

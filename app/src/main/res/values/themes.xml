@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Coach" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">@color/brandLight</item>
+        <item name="android:statusBarColor">@color/brandDark</item>
+        <item name="android:windowBackground">@color/paper</item>
+    </style>
+</resources>
