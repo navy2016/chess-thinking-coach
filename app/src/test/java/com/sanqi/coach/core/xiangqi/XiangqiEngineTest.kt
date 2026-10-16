@@ -147,6 +147,4 @@ class XiangqiEngineTest {
         val r = e.searchBest(pos(b, 1), 2)
         assertTrue(r.bestMove != null && r.bestMove!!.from == 58 && r.bestMove!!.to == 40)
     }
-
-    private fun kingsTyped(): Array<Pair<Int, Int>> = arrayOf(3 to 1, 86 to -1)
 }
