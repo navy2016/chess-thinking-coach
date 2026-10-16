@@ -1,4 +1,4 @@
-"""把 JUnit 失败与编译错误发布成 check-run 注解与 job summary，便于无日志环境排障。"""
+"""把单测/编译失败详情发布成提交评论（主通道）+ check-run 注解（尽力而为）。"""
 import glob
 import json
 import os
@@ -23,46 +23,17 @@ def api(url, data=None):
     return urllib.request.urlopen(req)
 
 
-check_id = None
-with api(f"https://api.github.com/repos/{repo}/commits/{sha}/check-runs") as r:
-    payload = json.load(r)
-    for cr in payload.get("check_runs", []):
-        check_id = cr["id"]
-        break
-print("check_run_id =", check_id)
-
-anns = []
-
-# 编译错误：Kotlin 编译器输出行以 "e: " 开头，格式 e: <path>:<line>:<col> <message>
+findings = []
+err_lines = []
+log_tail = []
 out = "/tmp/test_out.txt"
 if os.path.exists(out):
-    for line in open(out, encoding="utf-8", errors="replace"):
-        if not line.startswith("e: "):
-            continue
-        rest = line.strip()[3:].replace("file://", "")
-        parts = rest.split(":", 2)
-        path = "scripts/report_test_failures.py"
-        line_no = 1
-        message = rest
-        if len(parts) == 3:
-            idx = parts[0].find("app/")
-            if idx >= 0:
-                path = parts[0][idx:]
-            try:
-                line_no = max(1, int(parts[1]))
-            except ValueError:
-                pass
-            message = parts[2].strip()
-        anns.append({
-            "path": path,
-            "start_line": line_no,
-            "end_line": line_no,
-            "annotation_level": "failure",
-            "title": "compile error",
-            "message": message[:500],
-        })
+    lines = open(out, encoding="utf-8", errors="replace").read().splitlines()
+    err_lines = [l for l in lines if l.startswith("e: ") or " FAILED" in l or "FAILURE" in l or "Caused by" in l]
+    log_tail = lines[-150:]
+else:
+    findings.append("（/tmp/test_out.txt 不存在，单测步骤可能未执行到写文件）")
 
-# 单测失败：解析 JUnit XML
 for f in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
     try:
         root = ET.parse(f).getroot()
@@ -70,39 +41,55 @@ for f in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
         continue
     for tc in root.iter("testcase"):
         for fail in list(tc.iter("failure")) + list(tc.iter("error")):
-            cn = tc.get("classname", "")
-            name = tc.get("name", "test")
-            pkg = cn[: cn.rfind(".")] if "." in cn else ""
-            path = (
-                "app/src/test/java/" + pkg.replace(".", "/") + "/" + cn.split(".")[-1] + ".kt"
-                if pkg
-                else "app/src/test/java/UnknownTest.kt"
+            findings.append(
+                "TEST FAILED: " + tc.get("classname", "") + "." + tc.get("name", "") +
+                "\n  " + ((fail.get("message") or (fail.text or "").strip()[:300]) or "no message")
             )
-            msg = (fail.get("message") or (fail.text or "").strip()[:400]) or "no message"
+
+print("findings:", len(findings), "err_lines:", len(err_lines))
+
+body = "## CI 排障报告（自动化）\n\n"
+if findings:
+    body += "### 失败明细\n```\n" + "\n".join(findings[:60]) + "\n```\n\n"
+if err_lines:
+    body += "### 错误行\n```\n" + "\n".join(err_lines[:100]) + "\n```\n\n"
+if log_tail:
+    body += "### 日志尾部\n```\n" + "\n".join(log_tail) + "\n```\n"
+if len(body) < 30:
+    body += "（未捕获到明确错误，请到 run 页面查看完整日志）"
+
+summary = os.environ.get("GITHUB_STEP_SUMMARY")
+if summary:
+    with open(summary, "a", encoding="utf-8") as fh:
+        fh.write(body[:60000])
+
+ok = False
+try:
+    resp = api(f"https://api.github.com/repos/{repo}/commits/{sha}/comments", {"body": body[:60000]})
+    print("commit comment posted:", resp.status)
+    ok = True
+except Exception as ex:
+    print("commit comment failed:", ex)
+
+# 注解尽力而为
+try:
+    with api(f"https://api.github.com/repos/{repo}/commits/{sha}/check-runs") as r:
+        check_id = None
+        for cr in json.load(r).get("check_runs", []):
+            check_id = cr["id"]
+            break
+    if check_id and findings:
+        anns = []
+        for f in findings[:40]:
             anns.append({
-                "path": path,
+                "path": "scripts/report_test_failures.py",
                 "start_line": 1,
                 "end_line": 1,
                 "annotation_level": "failure",
-                "title": name + " FAILED",
-                "message": msg[:500],
+                "title": "test failure",
+                "message": f[:500],
             })
-
-print("findings:", len(anns))
-
-summary = os.environ.get("GITHUB_STEP_SUMMARY")
-if summary and anns:
-    with open(summary, "a", encoding="utf-8") as fh:
-        fh.write("## Unit test / compile failures\n\n")
-        for a in anns:
-            fh.write("- **" + a["title"] + "** (`" + a["path"] + ":" + str(a["start_line"]) + "`)\n\n  ```\n  " + a["message"] + "\n  ```\n\n")
-
-if check_id and anns:
-    try:
-        resp = api(
-            f"https://api.github.com/repos/{repo}/check-runs/{check_id}/annotations",
-            anns[:50],
-        )
-        print("annotations posted:", resp.status)
-    except Exception as ex:
-        print("annotation post failed:", ex)
+        api(f"https://api.github.com/repos/{repo}/check-runs/{check_id}/annotations", anns)
+        print("annotations posted")
+except Exception as ex:
+    print("annotations failed:", ex)
