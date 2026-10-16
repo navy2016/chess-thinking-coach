@@ -22,7 +22,7 @@ class ChessEngineTest {
 
     @Test
     fun testCastling() {
-        val clean = board(4 to 1, 0 to 3, 7 to 3, 56 to -1)
+        val clean = board(4 to 1, 0 to 3, 7 to 3, 57 to -1)
         val p = pos(clean, true, 3)
         val moves = e.legalMoves(p)
         assertTrue(moves.contains(Move(4, 6)))
@@ -120,7 +120,8 @@ class ChessEngineTest {
         assertEquals("exd5", e.notation(pos(cap, true), Move(28, 35)))
 
         val promo = board(52 to 6, 4 to 1, 63 to -1)
-        assertEquals("e8=Q+", e.notation(pos(promo, true), Move(52, 60, 2)))
+        assertEquals("e8=Q", e.notation(pos(promo, true), Move(52, 60, 2)))
+        assertEquals("e8=Q+", e.applyMove(pos(promo, true), Move(52, 60, 2)).notation)
 
         val castles = board(4 to 1, 0 to 3, 7 to 3, 56 to -1)
         assertEquals("O-O", e.notation(pos(castles, true, 3), Move(4, 6)))

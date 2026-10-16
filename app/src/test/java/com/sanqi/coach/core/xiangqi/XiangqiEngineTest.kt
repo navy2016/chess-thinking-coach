@@ -113,11 +113,12 @@ class XiangqiEngineTest {
 
     @Test
     fun testStalemate() {
-        // 红车 (0,5)→(0,8)：黑将 (4,9) 无子可动但未被将军——困毙
+        // 困毙：红车 (0,5)→(0,8) 封住黑将退路，三、五路车锁两侧，中兵挡住照面
         val b = board(
-            3 to 1,
+            13 to 1,
+            3 to 5, 5 to 5, 40 to 7,
             45 to 5,
-            84 to -2, 85 to -1, 86 to -2
+            85 to -1
         )
         val r = e.applyMove(pos(b, 0), Move(45, 72))
         assertFalse(r.check)
