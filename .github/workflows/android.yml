@@ -7,6 +7,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       GRADLE_OPTS: -Dorg.gradle.daemon=false
@@ -20,6 +23,12 @@ jobs:
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Report test failures
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/report_test_failures.py
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace
