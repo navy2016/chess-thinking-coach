@@ -1,0 +1,32 @@
+{
+  "ndk": "28.2.13676358",
+  "api": 24,
+  "engines": [
+    {
+      "id": "stockfish", "name": "Stockfish", "version": "17.1",
+      "repo": "official-stockfish/Stockfish", "commit": "03e27488f3d21d8ff4dbf3065603afa21dbd0ef3",
+      "license": "GPL-3.0; exact source and build scripts accompany the release.",
+      "models": [
+        {"name": "nn-1c0000000000.nnue", "url": "https://tests.stockfishchess.org/api/nn/nn-1c0000000000.nnue"},
+        {"name": "nn-37f18f62d772.nnue", "url": "https://tests.stockfishchess.org/api/nn/nn-37f18f62d772.nnue"}
+      ]
+    },
+    {
+      "id": "pikafish", "name": "Pikafish", "version": "2025-06-23",
+      "repo": "official-pikafish/Pikafish", "commit": "2b6cf79d55d9d168604cf42ce61b517653d6f2fc",
+      "license": "Engine: GPL-3.0. Official NNUE: no commercial use without permission. https://github.com/official-pikafish/Networks",
+      "modelArchive": "https://github.com/official-pikafish/Pikafish/releases/download/Pikafish-2025-06-23/Pikafish.2025-06-23.7z",
+      "archiveSha256": "0bcca441327c547772475665fe3763fda826064411f23ad042511785c11a36b5",
+      "models": []
+    },
+    {
+      "id": "katago", "name": "KataGo", "version": "1.16.5 / CPU b10c128",
+      "repo": "lightvector/KataGo", "commit": "ba938676d7f42d70950b3a535af2466fb642008c",
+      "license": "Engine: MIT and bundled third-party licenses. Selected g170 model: CC0. https://katagoarchive.org/g170/LICENSE.txt",
+      "models": [
+        {"name": "g170e-b10c128-s1141046784-d204142634.bin.gz", "url": "https://katagoarchive.org/g170/neuralnets/g170e-b10c128-s1141046784-d204142634.bin.gz"}
+      ]
+    }
+  ],
+  "eigen": {"version": "3.4.0", "repo": "https://gitlab.com/libeigen/eigen.git", "commit": "3147391d946bb4b6c68edd901f2add6ac1f31f8c"}
+}

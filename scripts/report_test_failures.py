@@ -29,7 +29,7 @@ log_tail = []
 out = "/tmp/test_out.txt"
 if os.path.exists(out):
     lines = open(out, encoding="utf-8", errors="replace").read().splitlines()
-    err_lines = [l for l in lines if l.startswith("e: ") or " FAILED" in l or "FAILURE" in l or "Caused by" in l]
+    err_lines = [l for l in lines if l.startswith("e: ") or " FAILED" in l or "FAILURE" in l or "Caused by" in l or "error:" in l.lower() or "RuntimeError:" in l or "CMake Error" in l]
     log_tail = lines[-150:]
 else:
     findings.append("（/tmp/test_out.txt 不存在，单测步骤可能未执行到写文件）")

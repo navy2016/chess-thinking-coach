@@ -6,14 +6,20 @@ plugins {
 android {
     namespace = "com.sanqi.coach"
     compileSdk = 35
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.sanqi.coach"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+        ndk { abiFilters += "arm64-v8a" }
     }
+
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/engineAssets"))
+    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("generated/engineLibs"))
+    packaging { jniLibs.useLegacyPackaging = true }
 
     buildTypes {
         release {
@@ -34,6 +40,16 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 }
+
+val verifyProfessionalEngines by tasks.registering {
+    doLast {
+        val root = layout.buildDirectory.get().asFile
+        val required = listOf("generated/engineAssets/engines/catalog.json") +
+            listOf("stockfish", "pikafish", "katago").map { "generated/engineLibs/arm64-v8a/lib$it.so" }
+        required.forEach { check(root.resolve(it).isFile) { "Missing $it; run scripts/build_android_engines.sh in the Android CI environment first" } }
+    }
+}
+tasks.named("preBuild").configure { dependsOn(verifyProfessionalEngines) }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")

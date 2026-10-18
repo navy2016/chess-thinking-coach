@@ -5,6 +5,7 @@ import com.sanqi.coach.core.GameEngine
 import com.sanqi.coach.core.GameStatus
 import com.sanqi.coach.core.Move
 import com.sanqi.coach.core.go.GoPosition
+import com.sanqi.coach.engine.AnalysisBackend
 
 enum class Grade(val label: String) {
     BEST("最佳"), GOOD("良好"), INACCURATE("可疑"), MISTAKE("失误"), BLUNDER("严重失误");
@@ -33,12 +34,13 @@ class CoachSession<P : Any>(
     val mode: Mode,
     private val aiDepth: Int,
     private val stalemateIsDraw: Boolean,
-    start: P? = null
+    start: P? = null,
+    private val backend: AnalysisBackend<P>? = null
 ) {
     enum class Mode { TWO_PLAYER, VS_AI, REVIEW }
 
     data class Entry<P : Any>(val posBefore: P, val move: Move, val applied: AppliedMove<P>, val rating: MoveRating?)
-    data class Reply(val score: Int, val moves: List<Move>, val notations: List<String>)
+    data class Reply(val score: Int, val moves: List<Move>, val notations: List<String>, val mateIn: Int? = null, val winrate: Double? = null)
     data class Preview(
         val revision: Long,
         val move: Move,
@@ -80,15 +82,15 @@ class CoachSession<P : Any>(
         val sourceRevision = revision
         val source = engine.copyPosition(current)
         require(move in engine.legalMoves(source))
-        val analyzer = PositionAnalyzer(engine)
-        val analysis = analyzer.analyze(source, depth, move, cancelled = cancelled)
+        val history = entries.map { it.move }
+        val analysis = analyzePosition(source, history, depth, move, cancelled)
         val chosen = analysis.candidates.first { it.move == move }
         val applied = engine.applyMove(source, move)
         val loss = (analysis.score - chosen.score).coerceAtLeast(0)
         val best = analysis.candidates.firstOrNull()?.move
         val bestNotation = if (best != null && best != move) engine.applyMove(source, best).notation else null
         val ended = applied.status in listOf(GameStatus.CHECKMATE, GameStatus.STALEMATE, GameStatus.DRAW)
-        val response = if (ended) null else analyzer.analyze(applied.position, maxOf(1, depth - 1), cancelled = cancelled)
+        val response = if (ended) null else analyzePosition(applied.position, history + move, depth, null, cancelled)
         val replies = response?.candidates?.take(3)?.map { candidate ->
             var pos = engine.copyPosition(applied.position)
             val moves = candidate.moves.take(8)
@@ -99,7 +101,7 @@ class CoachSession<P : Any>(
                 pos = result.position
                 result.notation
             }
-            Reply(candidate.score, moves, notations)
+            Reply(candidate.score, moves, notations, candidate.mateIn, candidate.winrate)
         } ?: emptyList()
         cancelled()
         return Preview(sourceRevision, move, applied.notation, applied.captured, applied.check,
@@ -107,8 +109,12 @@ class CoachSession<P : Any>(
             response?.completedDepth ?: 0, response?.limited ?: false)
     }
 
+    private fun analyzePosition(pos: P, moves: List<Move>, level: Int, forced: Move?, cancelled: () -> Unit): PositionAnalysis =
+        backend?.analyze(pos, moves, level, forced, cancelled)
+            ?: PositionAnalyzer(engine).analyze(pos, level, forced, cancelled = cancelled)
+
     fun candidates(depth: Int, cancelled: () -> Unit = {}): PositionAnalysis =
-        PositionAnalyzer(engine).analyze(engine.copyPosition(current), depth, cancelled = cancelled)
+        analyzePosition(engine.copyPosition(current), entries.map { it.move }, depth, null, cancelled)
 
     fun previewPosition(preview: Preview, branch: Int, steps: Int): P {
         require(accepts(preview))
@@ -144,7 +150,7 @@ class CoachSession<P : Any>(
     fun commit(move: Move, preview: Preview?, explanation: String = ""): Entry<P> {
         val ready = preview ?: analyze(aiDepth, move)
         require(ready.move == move && accepts(ready))
-        return push(move, MoveRating(ready.notation, ready.loss, ready.grade, ready.bestNotation, explanation))
+        return push(move, if (ready.analysis.comparable) MoveRating(ready.notation, ready.loss, ready.grade, ready.bestNotation, explanation) else null)
     }
 
     fun commitPass(): Entry<P> = push(Move(-1, -1), null)

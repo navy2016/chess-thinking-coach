@@ -18,7 +18,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class ReplayListActivity : AppCompatActivity() {
+class ReplayListActivity : ImmersiveActivity() {
 
     private lateinit var root: LinearLayout
 
@@ -36,7 +36,7 @@ class ReplayListActivity : AppCompatActivity() {
         val scroll = ScrollView(this)
         root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setPadding(48, 60, 48, 48)
+        root.setPadding(px(20), px(20), px(20), px(16))
         scroll.addView(root)
 
         val top = LinearLayout(this)
@@ -52,7 +52,7 @@ class ReplayListActivity : AppCompatActivity() {
         title.setTypeface(Typeface.DEFAULT_BOLD)
         title.gravity = Gravity.CENTER_VERTICAL
         val tlp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        tlp.leftMargin = 24
+        tlp.marginStart = px(12)
         top.addView(title, tlp)
         root.addView(top)
 
@@ -64,7 +64,7 @@ class ReplayListActivity : AppCompatActivity() {
             empty.setTextColor(Color.parseColor("#777777"))
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.topMargin = 48
+            lp.topMargin = px(20)
             root.addView(empty, lp)
         } else {
             for (g in games) {
@@ -77,12 +77,15 @@ class ReplayListActivity : AppCompatActivity() {
 
     private fun addItem(g: com.sanqi.coach.data.StoredGame) {
         val card = MaterialCardView(this)
-        card.radius = 18f
-        card.cardElevation = 4f
+        card.radius = px(16).toFloat()
+        card.cardElevation = 0f
+        card.strokeWidth = px(1)
+        card.strokeColor = getColor(com.sanqi.coach.R.color.coach_outline)
+        card.setCardBackgroundColor(getColor(com.sanqi.coach.R.color.coach_surface))
         card.useCompatPadding = true
         val inner = LinearLayout(this)
         inner.orientation = LinearLayout.VERTICAL
-        inner.setPadding(36, 28, 36, 28)
+        inner.setPadding(px(16), px(14), px(16), px(14))
 
         val main = TextView(this)
         main.text = GameActivity.kindLabel(g.kind) + " · " + g.moves.size + " 手 · " +
@@ -122,7 +125,7 @@ class ReplayListActivity : AppCompatActivity() {
 
         val lp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        lp.topMargin = 20
+        lp.topMargin = px(12)
         root.addView(card, lp)
     }
 }

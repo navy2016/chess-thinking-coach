@@ -1,99 +1,171 @@
 package com.sanqi.coach.ui
 
-import android.content.SharedPreferences
+import android.content.Intent
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
 import android.widget.CheckBox
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import com.google.android.material.button.MaterialButton
+import com.sanqi.coach.R
+import com.sanqi.coach.engine.EngineModelStore
+import com.sanqi.coach.tts.TtsManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-class SettingsActivity : AppCompatActivity() {
-
-    private lateinit var prefs: SharedPreferences
+class SettingsActivity : ImmersiveActivity() {
+    private lateinit var root: LinearLayout
+    private lateinit var prefs: android.content.SharedPreferences
+    private lateinit var speechStatus: TextView
+    private var tts: TtsManager? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var download: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("coach", MODE_PRIVATE)
-
-        val scroll = ScrollView(this)
-        val root = LinearLayout(this)
-        root.orientation = LinearLayout.VERTICAL
-        root.setPadding(48, 60, 48, 56)
-        scroll.addView(root)
-
-        val top = LinearLayout(this)
-        top.orientation = LinearLayout.HORIZONTAL
-        val back = MaterialButton(this)
-        back.text = "返回"
-        back.isAllCaps = false
-        back.setOnClickListener { finish() }
-        top.addView(back)
-        val title = TextView(this)
-        title.text = "设置"
-        title.textSize = 22f
-        val tlp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        tlp.leftMargin = 24
-        title.gravity = android.view.Gravity.CENTER_VERTICAL
-        top.addView(title, tlp)
-        root.addView(top)
-
-        fun addCheck(label: String, key: String, def: Boolean): CheckBox {
-            val cb = CheckBox(this)
-            cb.text = label
-            cb.isChecked = prefs.getBoolean(key, def)
-            cb.setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply() }
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.topMargin = 36
-            root.addView(cb, lp)
-            return cb
-        }
-
-        addCheck("教练流程：落子前先替对方推演，确认后才落子", "confirmOn", true)
-        addCheck("讲解朗读（TTS 语音播报）", "ttsOn", true)
-        addCheck("显示棋盘坐标", "showCoords", true)
-
-        val depthTitle = TextView(this)
-        depthTitle.text = "AI 推演深度（越大棋力越强、等待越久）"
-        depthTitle.textSize = 15f
-        val dlp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        dlp.topMargin = 48
-        root.addView(depthTitle, dlp)
-
-        val rg = RadioGroup(this)
-        rg.orientation = RadioGroup.HORIZONTAL
-        val depths = listOf("快速" to 2, "标准" to 3, "较强" to 4)
-        val current = prefs.getInt("aiDepth", 3)
-        for ((label, d) in depths) {
-            val rb = RadioButton(this)
-            rb.text = label
-            rb.isChecked = d == current
-            rb.setOnCheckedChangeListener { _, checked ->
-                if (checked) prefs.edit().putInt("aiDepth", d).apply()
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(20), px(16), px(20), px(24)) }
+        val scroll = ScrollView(this).apply { addView(root) }
+        root.addView(action(getString(R.string.back)) { finish() })
+        heading(R.string.settings_title)
+        check(R.string.setting_confirm, "confirmOn", true)
+        check(R.string.setting_coordinates, "showCoords", true)
+        check(R.string.setting_speech, "ttsOn", true)
+        heading(R.string.analysis_budget)
+        val levels = LinearLayout(this)
+        val levelButtons = mutableListOf<MaterialButton>()
+        for ((index, resource) in listOf(R.string.level_fast, R.string.level_standard, R.string.level_strong).withIndex()) {
+            val choice = action(getString(resource)) {
+                prefs.edit().putInt("aiDepth", index + 2).apply()
+                levelButtons.forEachIndexed { i, button -> button.alpha = if (i == index) 1f else 0.45f }
             }
-            rg.addView(rb, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            choice.alpha = if (prefs.getInt("aiDepth", 3) == index + 2) 1f else 0.45f
+            levelButtons.add(choice)
+            levels.addView(choice, LinearLayout.LayoutParams(0, -2, 1f))
         }
-        val rglp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        rglp.topMargin = 16
-        root.addView(rg, rglp)
-
-        val note = TextView(this)
-        note.text = "说明：讲解由本地引擎事实 + 模板生成，完全离线可用。" +
-            "后续版本将提供接入大模型 API 的开关，讲解会更口语化。"
-        note.textSize = 13f
-        val nlp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        nlp.topMargin = 64
-        root.addView(note, nlp)
-
-        scroll.fitsSystemWindows = true
+        root.addView(levels)
+        label(getString(R.string.budget_notice))
+        heading(R.string.speech_settings)
+        speechStatus = label(getString(R.string.tts_initializing))
+        root.addView(action(getString(R.string.tts_choose_engine)) {
+            val engines = tts?.engines().orEmpty()
+            val labels = (listOf(getString(R.string.tts_system_default)) + engines.map { it.second }).toTypedArray()
+            AlertDialog.Builder(this).setTitle(R.string.tts_choose_engine).setItems(labels) { _, which ->
+                prefs.edit().putString("ttsEngine", if (which == 0) null else engines[which - 1].first).apply()
+                resetSpeech()
+            }.show()
+        })
+        val rateLabel = label(getString(R.string.speech_rate, prefs.getFloat("ttsRate", 1f)))
+        root.addView(SeekBar(this).apply {
+            max = 150
+            progress = ((prefs.getFloat("ttsRate", 1f) - 0.5f) * 100).toInt()
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar?, value: Int, user: Boolean) {
+                    if (!user) return
+                    val rate = 0.5f + value / 100f
+                    prefs.edit().putFloat("ttsRate", rate).apply()
+                    rateLabel.text = getString(R.string.speech_rate, rate)
+                }
+                override fun onStartTrackingTouch(bar: SeekBar?) = Unit
+                override fun onStopTrackingTouch(bar: SeekBar?) = Unit
+            })
+        })
+        root.addView(action(getString(R.string.tts_test)) {
+            tts?.speak(getString(R.string.tts_sample), prefs.getFloat("ttsRate", 1f))
+        })
+        root.addView(action(getString(R.string.tts_system_settings)) {
+            try { startActivity(Intent("com.android.settings.TTS_SETTINGS")) }
+            catch (_: android.content.ActivityNotFoundException) { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS)) }
+        })
+        root.addView(action(getString(R.string.tts_install_data)) {
+            try {
+                val intent = Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+                prefs.getString("ttsEngine", null)?.let { intent.setPackage(it) }
+                startActivity(intent)
+            } catch (_: android.content.ActivityNotFoundException) { speechStatus.setText(R.string.tts_no_engine) }
+        })
+        heading(R.string.engine_settings)
+        label(getString(R.string.engine_download_notice))
+        val store = EngineModelStore(this)
+        val catalog = try { store.catalog() } catch (_: Exception) { emptyList() }
+        if (catalog.isEmpty()) label(getString(R.string.engine_not_packaged))
+        for (engine in catalog) {
+            label("${engine.title} ${engine.version}", true)
+            val state = label(getString(if (store.installed(engine)) R.string.model_installed else R.string.model_not_installed))
+            label(engine.license)
+            root.addView(action(getString(R.string.download_model, engine.models.sumOf { it.bytes } / (1024 * 1024))) {
+                if (download?.isActive == true) return@action
+                download = scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val context = currentCoroutineContext()
+                            var lastUpdate = 0L
+                            store.download(engine, { context.ensureActive() }) { bytes, total ->
+                                val now = System.nanoTime()
+                                if (now - lastUpdate > 200_000_000L || bytes == total) {
+                                    lastUpdate = now
+                                    runOnUiThread { if (!isDestroyed) state.text = getString(R.string.download_progress, bytes * 100 / maxOf(1, total)) }
+                                }
+                            }
+                        }
+                        state.setText(R.string.model_installed)
+                    } catch (_: CancellationException) {
+                        state.setText(R.string.download_cancelled)
+                    } catch (_: Exception) {
+                        state.setText(R.string.download_failed)
+                    }
+                }
+            })
+        }
+        root.addView(action(getString(R.string.cancel_download)) { download?.cancel() })
+        root.addView(action(getString(R.string.engine_licenses)) {
+            fun notices(path: String): String = assets.list(path).orEmpty().joinToString("\n\n") { name ->
+                val file = "$path/$name"
+                if (assets.list(file).orEmpty().isNotEmpty()) notices(file)
+                else "$name\n" + assets.open(file).bufferedReader().use { it.readText() }
+            }
+            val content = try { notices("engines/licenses") } catch (_: Exception) { getString(R.string.engine_not_packaged) }
+            AlertDialog.Builder(this).setTitle(R.string.engine_licenses).setMessage(content).setPositiveButton(R.string.close, null).show()
+        })
         setContentView(scroll)
     }
+
+    private fun resetSpeech() {
+        tts?.shutdown()
+        tts = TtsManager(this) { speechStatus.text = it }
+    }
+    private fun heading(resource: Int) { label(getString(resource), true).apply { textSize = 22f; setPadding(0, px(20), 0, px(8)) } }
+    private fun label(value: String, bold: Boolean = false): TextView = TextView(this).apply {
+        text = value; textSize = if (bold) 17f else 14f
+        setTextColor(getColor(R.color.ink)); setPadding(0, px(4), 0, px(4))
+        if (bold) setTypeface(android.graphics.Typeface.DEFAULT_BOLD)
+        root.addView(this)
+    }
+    private fun action(value: String, click: () -> Unit): MaterialButton = MaterialButton(this).apply {
+        text = value; isAllCaps = false; cornerRadius = px(14)
+        setOnClickListener { click() }
+    }
+    private fun check(resource: Int, key: String, default: Boolean) {
+        root.addView(CheckBox(this).apply {
+            setText(resource); isChecked = prefs.getBoolean(key, default)
+            setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply() }
+        })
+    }
+    override fun onResume() {
+        super.onResume()
+        if (::speechStatus.isInitialized) resetSpeech()
+    }
+    override fun onStop() { download?.cancel(); tts?.stop(); super.onStop() }
+    override fun onDestroy() { scope.cancel(); tts?.shutdown(); super.onDestroy() }
 }

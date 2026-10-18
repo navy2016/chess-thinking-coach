@@ -63,6 +63,28 @@ class BoardView @JvmOverloads constructor(
     private var pressedX: Float = 0f
     private var pressedY: Float = 0f
     private var tapCancelled: Boolean = false
+    private var zoom = 1f
+    private var panX = 0f
+    private var panY = 0f
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private val scaleDetector = android.view.ScaleGestureDetector(context, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+            zoom = (zoom * detector.scaleFactor).coerceIn(1f, 3f)
+            panX = panX.coerceIn(-width * (zoom - 1f) / 2f, width * (zoom - 1f) / 2f)
+            panY = panY.coerceIn(-height * (zoom - 1f) / 2f, height * (zoom - 1f) / 2f)
+            tapCancelled = true
+            invalidate()
+            return true
+        }
+    })
+
+    fun resetViewport() {
+        zoom = 1f
+        panX = 0f
+        panY = 0f
+        invalidate()
+    }
 
     private val rect = RectF()
     private var cell = 0f
@@ -114,6 +136,9 @@ class BoardView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         val a = adapter ?: return
+        canvas.save()
+        canvas.translate(panX, panY)
+        canvas.scale(zoom, zoom, width / 2f, height / 2f)
         val cols = a.columns()
         val rows = a.rows()
         val padding = if (showCoords) 1.6f else 0.7f
@@ -130,6 +155,7 @@ class BoardView @JvmOverloads constructor(
         }
         drawOverlays(canvas)
         if (showCoords) drawLabels(canvas, a)
+        canvas.restore()
     }
 
     private fun drawOverlays(canvas: Canvas) {
@@ -221,20 +247,50 @@ class BoardView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        scaleDetector.onTouchEvent(event)
+        if (zoom > 1f || event.pointerCount > 1) parent?.requestDisallowInterceptTouchEvent(true)
+        val pointX = (event.x - panX - width / 2f) / zoom + width / 2f
+        val pointY = (event.y - panY - height / 2f) / zoom + height / 2f
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 pressedX = event.x
                 pressedY = event.y
+                lastTouchX = event.x
+                lastTouchY = event.y
                 tapCancelled = false
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
                 if (kotlin.math.abs(event.x - pressedX) > slop || kotlin.math.abs(event.y - pressedY) > slop) tapCancelled = true
+                if (zoom > 1f && !scaleDetector.isInProgress && event.pointerCount == 1 && tapCancelled) {
+                    panX = (panX + event.x - lastTouchX).coerceIn(-width * (zoom - 1f) / 2f, width * (zoom - 1f) / 2f)
+                    panY = (panY + event.y - lastTouchY).coerceIn(-height * (zoom - 1f) / 2f, height * (zoom - 1f) / 2f)
+                    invalidate()
+                }
+                lastTouchX = event.x
+                lastTouchY = event.y
                 return true
             }
-            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> { tapCancelled = true; return true }
-            MotionEvent.ACTION_UP -> if (tapCancelled) return true
+            MotionEvent.ACTION_POINTER_DOWN -> { tapCancelled = true; return true }
+            MotionEvent.ACTION_POINTER_UP -> {
+                val remaining = if (event.actionIndex == 0) 1 else 0
+                if (remaining < event.pointerCount) {
+                    lastTouchX = event.getX(remaining)
+                    lastTouchY = event.getY(remaining)
+                }
+                tapCancelled = true
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                tapCancelled = true
+                parent?.requestDisallowInterceptTouchEvent(false)
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                parent?.requestDisallowInterceptTouchEvent(false)
+                if (tapCancelled) return true
+            }
             else -> return true
         }
         val a = adapter ?: return false
@@ -244,15 +300,15 @@ class BoardView @JvmOverloads constructor(
         val gx: Int
         val gy: Int
         if (a.intersections()) {
-            val fx = (event.x - originX) / cell
-            val fy = (event.y - originY) / cell
+            val fx = (pointX - originX) / cell
+            val fy = (pointY - originY) / cell
             if (fx < -0.45f || fx > cols - 0.55f || fy < -0.45f || fy > rows - 0.55f) return true
             gx = Math.round(fx)
             gy = Math.round(fy)
         } else {
-            if (!rect.contains(event.x, event.y)) return true
-            val fx = ((event.x - rect.left) / cell).toInt()
-            val fy = ((event.y - rect.top) / cell).toInt()
+            if (!rect.contains(pointX, pointY)) return true
+            val fx = ((pointX - rect.left) / cell).toInt()
+            val fy = ((pointY - rect.top) / cell).toInt()
             if (fx < 0 || fx >= cols || fy < 0 || fy >= rows) return true
             gx = fx
             gy = fy

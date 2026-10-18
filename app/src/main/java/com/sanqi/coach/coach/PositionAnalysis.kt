@@ -2,7 +2,7 @@ package com.sanqi.coach.coach
 
 import com.sanqi.coach.core.Move
 
-data class CandidateLine(val move: Move, val score: Int, val moves: List<Move>)
+data class CandidateLine(val move: Move, val score: Int, val moves: List<Move>, val mateIn: Int? = null, val winrate: Double? = null)
 
 data class PositionAnalysis(
     val candidates: List<CandidateLine>,
@@ -11,5 +11,8 @@ data class PositionAnalysis(
     val requestedDepth: Int,
     val nodes: Int,
     val limited: Boolean,
-    val heuristic: Boolean
+    val heuristic: Boolean,
+    val engine: String? = null,
+    val scoreUnit: String = "cp",
+    val comparable: Boolean = true
 )

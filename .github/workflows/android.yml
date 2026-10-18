@@ -22,34 +22,60 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Unit tests
+      - name: Install native build tools
         run: |
-          ./gradlew testDebugUnitTest --stacktrace > /tmp/test_out.txt 2>&1
+          sdkmanager "ndk;28.2.13676358" "cmake;3.22.1"
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+
+      - name: Build pinned Android engines and model catalog
+        run: |
+          set +e
+          bash scripts/build_android_engines.sh > /tmp/test_out.txt 2>&1
           code=$?
           cat /tmp/test_out.txt
           exit $code
 
-      - name: Report test failures
+      - name: Unit tests
+        run: |
+          set +e
+          ./gradlew :app:testDebugUnitTest --stacktrace > /tmp/test_out.txt 2>&1
+          code=$?
+          cat /tmp/test_out.txt
+          exit $code
+
+      - name: Build debug APK
+        run: |
+          set +e
+          ./gradlew :app:assembleDebug --stacktrace > /tmp/test_out.txt 2>&1
+          code=$?
+          cat /tmp/test_out.txt
+          exit $code
+
+      - name: Report build or test failures
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/report_test_failures.py
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-
       - name: Release APK
-        if: success()
+        if: success() && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v1.0-$(git rev-parse --short HEAD)"
           gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk \
+            app/build/engine-release/pikafish.nnue app/build/engine-release/engine-corresponding-sources.tar.gz \
+            --target "$GITHUB_SHA" \
             --title "三棋思考教练 $TAG" \
-            --notes "自建 APK（debug 签名）。手机浏览器直接下载后安装即可；如提示未知来源，允许安装即可。落子前替你推演，落子后讲给你听。"
+            --notes "Android arm64 自建 APK（debug 签名），含 Stockfish/Pikafish/KataGo 原生程序。模型在设置中按需下载，校验后离线使用。Pikafish 权重不得未经许可商用。对应引擎源码、构建脚本与许可证见附带源码包。TTS/全屏及真机引擎启动需在目标设备验收。"
+
+      - name: Upload complete distribution
+        if: success() && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/engine-release/pikafish.nnue
+            app/build/engine-release/engine-corresponding-sources.tar.gz

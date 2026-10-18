@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
-class GameActivity : AppCompatActivity() {
+class GameActivity : ImmersiveActivity() {
     companion object {
         const val K_KIND = "kind"
         const val K_MODE = "mode"
@@ -56,6 +56,12 @@ class GameActivity : AppCompatActivity() {
     private lateinit var kind: String
     private lateinit var kit: GameKit
     private lateinit var engine: GameEngine<Any>
+    private var professional: com.sanqi.coach.engine.ProfessionalEngineBackend? = null
+    private var showSidebar = false
+    private val replyCards = mutableListOf<LinearLayout>()
+    private var previousLineButton: MaterialButton? = null
+    private var nextLineButton: MaterialButton? = null
+    private var lineCounter: TextView? = null
     private lateinit var session: CoachSession<Any>
     private lateinit var prefs: android.content.SharedPreferences
     private var mode = CoachSession.Mode.TWO_PLAYER
@@ -116,6 +122,7 @@ class GameActivity : AppCompatActivity() {
         startedAt = stored?.startedAt ?: System.currentTimeMillis()
         kit = GameKit(kind, boardSize)
         engine = kit.engine
+        if (mode != CoachSession.Mode.REVIEW) professional = com.sanqi.coach.engine.ProfessionalEngineBackend(this, kind, engine)
         session = newSession()
         gameDone = stored?.finished ?: false
         resultText = stored?.resultText.orEmpty()
@@ -144,7 +151,6 @@ class GameActivity : AppCompatActivity() {
         }
         branch = savedInstanceState?.getInt("branch", 0) ?: 0
         lineStep = savedInstanceState?.getInt("lineStep", 0) ?: 0
-        tts = TtsManager(this)
         buildUi()
         render()
     }
@@ -152,6 +158,11 @@ class GameActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (loadFailed || !::session.isInitialized) return
+        tts?.shutdown()
+        tts = TtsManager(this) { message ->
+            if (!isFinishing && !isDestroyed && message !in listOf(getString(R.string.tts_ready), getString(R.string.tts_speaking), getString(R.string.tts_initializing)))
+                android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+        }
         render()
         if (mode != CoachSession.Mode.REVIEW && !gameDone && !scoring()) {
             if (mode == CoachSession.Mode.VS_AI && session.sideToMove() == 1) aiTurn()
@@ -159,7 +170,7 @@ class GameActivity : AppCompatActivity() {
         }
     }
 
-    private fun newSession(): CoachSession<Any> = CoachSession(engine, mode, aiDepth, kind == "chess")
+    private fun newSession(): CoachSession<Any> = CoachSession(engine, mode, aiDepth, kind == "chess", backend = professional)
 
     private fun restoreMove(move: StoredMove) {
         val grade = Grade.entries.firstOrNull { it.label == move.gradeName }
@@ -197,24 +208,22 @@ class GameActivity : AppCompatActivity() {
         }
 
     private fun buildUi() {
-        wide = resources.configuration.screenWidthDp >= 720 &&
-            resources.configuration.screenWidthDp > resources.configuration.screenHeightDp
+        val widthDp = resources.configuration.screenWidthDp
+        val heightDp = resources.configuration.screenHeightDp
+        wide = widthDp >= 600 && widthDp > heightDp
+        val panelWidth = (widthDp * 0.30f).toInt().coerceIn(220, 280)
+        showSidebar = wide && resources.configuration.fontScale < 1.4f &&
+            widthDp - panelWidth - 140 >= (heightDp - 40) * (if (kind == "xiangqi") 0.9f else 1f)
         val root = LinearLayout(this).apply {
             orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.coach_surface))
-        }
-        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or
-                androidx.core.view.WindowInsetsCompat.Type.displayCutout())
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
         }
         val left = column().apply { setPadding(dp(12), dp(12), dp(10), dp(8)) }
         information = text("", if (wide) 14f else 13f)
         records = text("", 13f)
         controls = column()
         left.addView(information)
-        if (wide) {
+        if (showSidebar) {
             left.removeView(information)
             val infoBody = column()
             infoBody.addView(text(getString(R.string.match_information), 18f, true))
@@ -224,8 +233,8 @@ class GameActivity : AppCompatActivity() {
             val recordScroll = ScrollView(this).apply { addView(infoBody) }
             left.addView(recordScroll, LinearLayout.LayoutParams(-1, 0, 1f))
             left.addView(controls)
-            root.addView(left, LinearLayout.LayoutParams(dp(150), -1))
-        } else {
+            root.addView(left, LinearLayout.LayoutParams(dp(140), -1))
+        } else if (!wide) {
             val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
             header.addView(button(getString(R.string.back)) { finish() }, LinearLayout.LayoutParams(-2, -2))
             left.removeView(information)
@@ -238,6 +247,13 @@ class GameActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setTextColor(color(R.color.coach_purple))
             setPadding(dp(8), dp(6), dp(8), dp(6))
+        }
+        if (wide && !showSidebar) {
+            left.removeView(information)
+            val compact = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            compact.addView(button(getString(R.string.back)) { finish() }, LinearLayout.LayoutParams(-2, -2))
+            compact.addView(information, LinearLayout.LayoutParams(0, -2, 1f))
+            center.addView(compact)
         }
         center.addView(badge, LinearLayout.LayoutParams(-1, -2))
         board = BoardView(this).apply {
@@ -254,7 +270,7 @@ class GameActivity : AppCompatActivity() {
         right.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         actions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         right.addView(actions, LinearLayout.LayoutParams(-1, -2))
-        if (wide) root.addView(right, LinearLayout.LayoutParams(dp(265), -1))
+        if (wide) root.addView(right, LinearLayout.LayoutParams(dp(panelWidth), -1))
         else root.addView(right, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
         androidx.core.view.ViewCompat.requestApplyInsets(root)
@@ -276,7 +292,7 @@ class GameActivity : AppCompatActivity() {
             confirmOn -> R.string.mode_guided
             else -> R.string.mode_direct
         })
-        information.text = if (wide) {
+        information.text = if (showSidebar) {
             buildString {
                 append(getString(R.string.info_side, turn)).append("\n")
                 if (kind == "go") {
@@ -292,7 +308,7 @@ class GameActivity : AppCompatActivity() {
         records.text = session.history.mapIndexed { i, entry -> "${i + 1}. ${entry.applied.notation}" }.joinToString("\n")
             .ifEmpty { getString(R.string.no_moves) }
         controls.removeAllViews()
-        if (wide) {
+        if (showSidebar) {
             val firstRow = LinearLayout(this)
             firstRow.addView(button(getString(R.string.back)) { finish() }, LinearLayout.LayoutParams(0, -2, 1f))
             if (mode != CoachSession.Mode.REVIEW) {
@@ -315,6 +331,10 @@ class GameActivity : AppCompatActivity() {
         }
         analysisPanel.removeAllViews()
         actions.removeAllViews()
+        replyCards.clear()
+        previousLineButton = null
+        nextLineButton = null
+        lineCounter = null
         when {
             mode == CoachSession.Mode.REVIEW -> renderReview()
             gameDone -> {
@@ -341,19 +361,23 @@ class GameActivity : AppCompatActivity() {
             else -> {
                 analysisPanel.addView(text(getString(R.string.choose_move), 19f, true))
                 analysisPanel.addView(text(feedback.ifEmpty { getString(R.string.choose_move_help) }, 14f))
-                if (!wide) {
+                if (!showSidebar) {
                     analysisPanel.addView(text(getString(R.string.move_record), 14f, true))
                     analysisPanel.addView(text(records.text.toString(), 12f))
                 }
                 analysisPanel.addView(button(getString(R.string.compare_candidates)) { showCandidates() })
-                if (lastExplanation.isNotEmpty()) analysisPanel.addView(button(getString(R.string.read_explanation)) { speak(lastExplanation) })
-                if (!wide) {
+                val tools = LinearLayout(this)
+                tools.addView(button(getString(R.string.engine_settings)) { startActivity(Intent(this, SettingsActivity::class.java)) }, LinearLayout.LayoutParams(0, -2, 1f))
+                tools.addView(button(getString(R.string.reset_board)) { board.resetViewport() }, LinearLayout.LayoutParams(0, -2, 1f))
+                analysisPanel.addView(tools)
+                if (lastExplanation.isNotEmpty()) analysisPanel.addView(button(getString(R.string.read_explanation)) { speak(lastExplanation, true) })
+                if (!showSidebar) {
                     val row = LinearLayout(this)
                     row.addView(button(getString(R.string.undo), enabled = session.history.isNotEmpty()) { undo() }, LinearLayout.LayoutParams(0, -2, 1f))
                     row.addView(button(getString(R.string.resign)) { resign() }, LinearLayout.LayoutParams(0, -2, 1f))
                     analysisPanel.addView(row)
                 }
-                if (kind == "go" && !wide) addAction(getString(R.string.pass)) { propose(Move(-1, -1)) }
+                if (kind == "go" && !showSidebar) addAction(getString(R.string.pass)) { propose(Move(-1, -1)) }
             }
         }
         refreshBoard()
@@ -366,15 +390,18 @@ class GameActivity : AppCompatActivity() {
     private fun renderPreview(p: CoachSession.Preview) {
         analysisPanel.addView(text(getString(R.string.hypothetical_analysis), 20f, true))
         analysisPanel.addView(text(getString(R.string.preview_move, p.notation), 17f, true))
-        analysisPanel.addView(text(getString(R.string.preview_grade, Explainer.gradeLabel(this, p.grade), p.loss), 14f).apply {
+        analysisPanel.addView(text(if (p.analysis.comparable) getString(R.string.preview_grade, Explainer.gradeLabel(this, p.grade), p.loss)
+            else getString(R.string.rating_unavailable), 14f).apply {
             setTextColor(color(if (p.loss <= 80) R.color.coach_positive else R.color.coach_warning))
         })
-        analysisPanel.addView(text(getString(R.string.analysis_depth, p.analysis.completedDepth, p.analysis.requestedDepth), 12f))
+        p.analysis.engine?.let { analysisPanel.addView(text(it, 13f, true)) }
+        analysisPanel.addView(text(if (p.analysis.scoreUnit == "points") getString(R.string.engine_visits, p.analysis.nodes)
+            else getString(R.string.analysis_depth, p.analysis.completedDepth, p.analysis.requestedDepth), 12f))
         if (p.analysis.limited || p.repliesLimited) analysisPanel.addView(text(getString(R.string.analysis_limited), 12f))
-        analysisPanel.addView(text(getString(if (kind == "go") R.string.go_score_unit else R.string.chess_score_unit), 12f))
+        analysisPanel.addView(text(getString(if (kind == "go") R.string.go_engine_unit else R.string.chess_score_unit), 12f))
         if (p.analysis.heuristic) analysisPanel.addView(text(getString(R.string.heuristic_notice), 12f))
         analysisPanel.addView(text(getString(R.string.opponent_replies), 17f, true).apply { setPadding(0, dp(12), 0, dp(6)) })
-        analysisPanel.addView(text(getString(R.string.reply_depth, p.replyDepth), 12f))
+        if (kind != "go") analysisPanel.addView(text(getString(R.string.reply_depth, p.replyDepth), 12f))
         if (p.replies.isEmpty()) analysisPanel.addView(text(getString(R.string.no_reply), 13f))
         for ((index, reply) in p.replies.withIndex()) {
             val card = column().apply {
@@ -384,12 +411,18 @@ class GameActivity : AppCompatActivity() {
                     setColor(color(if (index == branch) R.color.coach_selected else R.color.coach_surface))
                     setStroke(dp(if (index == branch) 2 else 1), color(if (index == branch) R.color.coach_accent else R.color.coach_outline))
                 }
-                setOnClickListener { branch = index; lineStep = reply.moves.size; render() }
+                setOnClickListener { branch = index; lineStep = reply.moves.size; updateLineSelection() }
             }
-            card.addView(text(getString(R.string.reply_heading, index + 1, reply.score), 13f, true))
+            val value = when {
+                reply.mateIn != null -> getString(R.string.engine_mate, reply.mateIn)
+                kind == "go" -> getString(R.string.engine_points, reply.score / 100.0, (reply.winrate ?: 0.0) * 100)
+                else -> getString(R.string.engine_pawns, reply.score / 100.0)
+            }
+            card.addView(text(getString(R.string.reply_engine_heading, index + 1, value), 13f, true))
             card.addView(text(reply.notations.mapIndexed { i, notation ->
                 getString(R.string.reply_step, i + 1, sideLabel((session.sideToMove() + 1 + i) % 2), notation)
             }.joinToString("   "), 13f))
+            replyCards.add(card)
             analysisPanel.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         }
         if (p.replies.isNotEmpty()) {
@@ -397,19 +430,38 @@ class GameActivity : AppCompatActivity() {
             val total = p.replies[branch].moves.size
             lineStep = lineStep.coerceIn(0, total)
             val playback = LinearLayout(this)
-            playback.addView(button(getString(R.string.previous_step), enabled = lineStep > 0) { lineStep--; render() }, LinearLayout.LayoutParams(0, -2, 1f))
-            playback.addView(text("$lineStep / $total", 12f).apply { gravity = Gravity.CENTER }, LinearLayout.LayoutParams(-2, -1))
-            playback.addView(button(getString(R.string.next_step), enabled = lineStep < total) { lineStep++; render() }, LinearLayout.LayoutParams(0, -2, 1f))
+            previousLineButton = button(getString(R.string.previous_step), enabled = lineStep > 0) { lineStep--; updateLineSelection() }
+            nextLineButton = button(getString(R.string.next_step), enabled = lineStep < total) { lineStep++; updateLineSelection() }
+            lineCounter = text("$lineStep / $total", 12f).apply { gravity = Gravity.CENTER }
+            playback.addView(previousLineButton, LinearLayout.LayoutParams(0, -2, 1f))
+            playback.addView(lineCounter, LinearLayout.LayoutParams(-2, -1))
+            playback.addView(nextLineButton, LinearLayout.LayoutParams(0, -2, 1f))
             analysisPanel.addView(playback)
         }
         analysisPanel.addView(button(getString(R.string.local_explanation)) {
             val message = Explainer.explain(this, p)
             AlertDialog.Builder(this).setTitle(R.string.local_explanation).setMessage(message)
-                .setPositiveButton(R.string.read_aloud) { _, _ -> speak(message) }.setNegativeButton(R.string.close, null).show()
+                .setPositiveButton(R.string.read_aloud) { _, _ -> speak(message, true) }.setNegativeButton(R.string.close, null).show()
         })
         analysisPanel.addView(text(getString(R.string.local_only_notice), 11f))
         addAction(getString(R.string.change_move)) { clearPreview(); render() }
         addAction(getString(R.string.confirm_move), true) { commitPending() }
+    }
+
+    private fun updateLineSelection() {
+        val p = preview ?: return
+        val total = p.replies.getOrNull(branch)?.moves?.size ?: 0
+        lineStep = lineStep.coerceIn(0, total)
+        for ((index, card) in replyCards.withIndex()) {
+            (card.background as GradientDrawable).apply {
+                setColor(color(if (index == branch) R.color.coach_selected else R.color.coach_surface))
+                setStroke(dp(if (index == branch) 2 else 1), color(if (index == branch) R.color.coach_accent else R.color.coach_outline))
+            }
+        }
+        lineCounter?.text = "$lineStep / $total"
+        previousLineButton?.apply { isEnabled = lineStep > 0; alpha = if (isEnabled) 1f else 0.4f }
+        nextLineButton?.apply { isEnabled = lineStep < total; alpha = if (isEnabled) 1f else 0.4f }
+        refreshBoard()
     }
 
     private fun refreshBoard() {
@@ -468,6 +520,7 @@ class GameActivity : AppCompatActivity() {
     private fun cancelWork() {
         request++
         job?.cancel()
+        professional?.close()
         job = null
         busy = false
     }
@@ -491,12 +544,17 @@ class GameActivity : AppCompatActivity() {
                 complete(value)
             } catch (_: CancellationException) {
                 if (token == request) { busy = false; job = null }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 if (token == request && !isFinishing && !isDestroyed) {
                     busy = false
                     job = null
                     clearPreview()
-                    feedback = getString(R.string.analysis_failed)
+                    feedback = if (error is com.sanqi.coach.engine.EngineException) getString(when (error.problem) {
+                        com.sanqi.coach.engine.EngineProblem.MODEL_MISSING -> R.string.engine_models_needed
+                        com.sanqi.coach.engine.EngineProblem.NOT_PACKAGED -> R.string.engine_not_packaged
+                        com.sanqi.coach.engine.EngineProblem.INVALID_LINE -> R.string.engine_invalid_line
+                        else -> R.string.engine_failed
+                    }) else getString(R.string.engine_failed)
                     render()
                 }
             }
@@ -505,6 +563,15 @@ class GameActivity : AppCompatActivity() {
 
     private fun propose(move: Move, resetPlayback: Boolean = true) {
         if (busy || !session.isMoveLegal(move)) return
+        if (!confirmOn && mode == CoachSession.Mode.TWO_PLAYER) {
+            session.commitReview(move, null)
+            clearPreview()
+            feedback = getString(R.string.direct_without_analysis)
+            updateResult()
+            saveGame()
+            render()
+            return
+        }
         pending = move
         if (resetPlayback) { branch = 0; lineStep = 0 }
         work(R.string.analyzing, { check -> session.analyze(aiDepth, move, check) }) { p ->
@@ -679,8 +746,8 @@ class GameActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun speak(message: String) {
-        if (prefs.getBoolean("ttsOn", true)) tts?.speak(message, prefs.getFloat("ttsRate", 1f))
+    private fun speak(message: String, manual: Boolean = false) {
+        if (manual || prefs.getBoolean("ttsOn", true)) tts?.speak(message, prefs.getFloat("ttsRate", 1f), manual)
     }
 
     private fun toast(message: Int) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()

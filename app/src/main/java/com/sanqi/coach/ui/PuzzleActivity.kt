@@ -19,7 +19,7 @@ import com.sanqi.coach.content.PuzzleItem
 import com.sanqi.coach.core.GameStatus
 import com.sanqi.coach.core.Move
 
-class PuzzleActivity : AppCompatActivity() {
+class PuzzleActivity : ImmersiveActivity() {
 
     companion object {
         const val K_ID = "puzzleId"
@@ -55,14 +55,14 @@ class PuzzleActivity : AppCompatActivity() {
         val scroll = ScrollView(this)
         listRoot = LinearLayout(this)
         listRoot!!.orientation = LinearLayout.VERTICAL
-        listRoot!!.setPadding(48, 60, 48, 48)
+        listRoot!!.setPadding(px(20), px(20), px(20), px(16))
         scroll.addView(listRoot!!)
 
         val title = TextView(this)
         title.text = "残局挑战"
         title.textSize = 24f
         title.setTypeface(Typeface.DEFAULT_BOLD)
-        title.setTextColor(Color.parseColor("#1B5E20"))
+        title.setTextColor(getColor(com.sanqi.coach.R.color.coach_accent))
         listRoot!!.addView(title)
 
         val hint = TextView(this)
@@ -71,20 +71,23 @@ class PuzzleActivity : AppCompatActivity() {
         hint.setTextColor(Color.parseColor("#666666"))
         val hlp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        hlp.topMargin = 8
+        hlp.topMargin = px(8)
         listRoot!!.addView(hint, hlp)
 
         for (p in all) {
             val card = MaterialCardView(this)
-            card.radius = 18f
-            card.cardElevation = 4f
+            card.radius = px(16).toFloat()
+            card.cardElevation = 0f
+            card.strokeWidth = px(1)
+            card.strokeColor = getColor(com.sanqi.coach.R.color.coach_outline)
+            card.setCardBackgroundColor(getColor(com.sanqi.coach.R.color.coach_surface))
             card.useCompatPadding = true
             card.setOnClickListener {
                 startActivity(Intent(this, PuzzleActivity::class.java).putExtra(K_ID, p.id))
             }
             val inner = LinearLayout(this)
             inner.orientation = LinearLayout.VERTICAL
-            inner.setPadding(36, 28, 36, 28)
+            inner.setPadding(px(16), px(14), px(16), px(14))
             val t = TextView(this)
             t.text = "[" + GameActivity.kindLabel(p.kind) + "] " + p.title
             t.textSize = 16f
@@ -99,7 +102,7 @@ class PuzzleActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.topMargin = 20
+            lp.topMargin = px(12)
             listRoot!!.addView(card, lp)
         }
 
@@ -109,7 +112,7 @@ class PuzzleActivity : AppCompatActivity() {
         back.setOnClickListener { finish() }
         val blp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        blp.topMargin = 40
+        blp.topMargin = px(16)
         listRoot!!.addView(back, blp)
 
         scroll.fitsSystemWindows = true
@@ -131,7 +134,7 @@ class PuzzleActivity : AppCompatActivity() {
         val top = LinearLayout(this)
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
-        top.setPadding(16, 40, 24, 12)
+        top.setPadding(px(12), px(8), px(12), px(4))
         val back = MaterialButton(this)
         back.text = "返回"
         back.isAllCaps = false
@@ -141,7 +144,7 @@ class PuzzleActivity : AppCompatActivity() {
         titleView.textSize = 18f
         titleView.setTypeface(Typeface.DEFAULT_BOLD)
         top.addView(titleView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            leftMargin = 24
+            marginStart = px(12)
         })
         titleView.text = p.title
         root.addView(top)
@@ -157,7 +160,7 @@ class PuzzleActivity : AppCompatActivity() {
 
         infoText = TextView(this)
         infoText.textSize = 14f
-        infoText.setPadding(36, 16, 36, 8)
+        infoText.setPadding(px(16), px(8), px(16), px(8))
         val infoScroll = ScrollView(this)
         infoScroll.addView(infoText)
         root.addView(infoScroll, LinearLayout.LayoutParams(
@@ -165,7 +168,7 @@ class PuzzleActivity : AppCompatActivity() {
 
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
-        row.setPadding(20, 4, 20, 32)
+        row.setPadding(px(12), px(4), px(12), px(8))
         val hintBtn = MaterialButton(this)
         hintBtn.text = "提示"
         hintBtn.isAllCaps = false
@@ -177,7 +180,7 @@ class PuzzleActivity : AppCompatActivity() {
         row.addView(hintBtn)
         row.addView(retry, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = 20
+                marginStart = px(8)
             })
         root.addView(row, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))

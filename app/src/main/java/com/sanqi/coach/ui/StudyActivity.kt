@@ -16,7 +16,7 @@ import com.google.android.material.card.MaterialCardView
 import com.sanqi.coach.content.Content
 import com.sanqi.coach.content.StudyItem
 
-class StudyActivity : AppCompatActivity() {
+class StudyActivity : ImmersiveActivity() {
 
     companion object {
         const val K_ID = "studyId"
@@ -50,14 +50,14 @@ class StudyActivity : AppCompatActivity() {
         val scroll = ScrollView(this)
         listRoot = LinearLayout(this)
         listRoot!!.orientation = LinearLayout.VERTICAL
-        listRoot!!.setPadding(48, 60, 48, 48)
+        listRoot!!.setPadding(px(20), px(20), px(20), px(16))
         scroll.addView(listRoot!!)
 
         val title = TextView(this)
         title.text = "棋谱教学"
         title.textSize = 24f
         title.setTypeface(Typeface.DEFAULT_BOLD)
-        title.setTextColor(Color.parseColor("#1B5E20"))
+        title.setTextColor(getColor(com.sanqi.coach.R.color.coach_accent))
         listRoot!!.addView(title)
 
         val hint = TextView(this)
@@ -66,20 +66,23 @@ class StudyActivity : AppCompatActivity() {
         hint.setTextColor(Color.parseColor("#666666"))
         val hlp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        hlp.topMargin = 8
+        hlp.topMargin = px(8)
         listRoot!!.addView(hint, hlp)
 
         for (s in all) {
             val card = MaterialCardView(this)
-            card.radius = 18f
-            card.cardElevation = 4f
+            card.radius = px(16).toFloat()
+            card.cardElevation = 0f
+            card.strokeWidth = px(1)
+            card.strokeColor = getColor(com.sanqi.coach.R.color.coach_outline)
+            card.setCardBackgroundColor(getColor(com.sanqi.coach.R.color.coach_surface))
             card.useCompatPadding = true
             card.setOnClickListener {
                 startActivity(Intent(this, StudyActivity::class.java).putExtra(K_ID, s.id))
             }
             val inner = LinearLayout(this)
             inner.orientation = LinearLayout.VERTICAL
-            inner.setPadding(36, 28, 36, 28)
+            inner.setPadding(px(16), px(14), px(16), px(14))
             val t = TextView(this)
             t.text = "[" + GameActivity.kindLabel(s.kind) + "] " + s.title
             t.textSize = 16f
@@ -94,7 +97,7 @@ class StudyActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.topMargin = 20
+            lp.topMargin = px(12)
             listRoot!!.addView(card, lp)
         }
 
@@ -104,7 +107,7 @@ class StudyActivity : AppCompatActivity() {
         back.setOnClickListener { finish() }
         val blp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        blp.topMargin = 40
+        blp.topMargin = px(16)
         listRoot!!.addView(back, blp)
 
         scroll.fitsSystemWindows = true
@@ -121,7 +124,7 @@ class StudyActivity : AppCompatActivity() {
         val top = LinearLayout(this)
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
-        top.setPadding(16, 40, 24, 12)
+        top.setPadding(px(12), px(8), px(12), px(4))
         val back = MaterialButton(this)
         back.text = "返回"
         back.isAllCaps = false
@@ -131,7 +134,7 @@ class StudyActivity : AppCompatActivity() {
         titleView.textSize = 18f
         titleView.setTypeface(Typeface.DEFAULT_BOLD)
         top.addView(titleView, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            leftMargin = 24
+            marginStart = px(12)
         })
         titleView.text = s.title
         root.addView(top)
@@ -146,7 +149,7 @@ class StudyActivity : AppCompatActivity() {
 
         infoText = TextView(this)
         infoText.textSize = 14f
-        infoText.setPadding(36, 16, 36, 8)
+        infoText.setPadding(px(16), px(8), px(16), px(8))
         val infoScroll = ScrollView(this)
         infoScroll.addView(infoText)
         root.addView(infoScroll, LinearLayout.LayoutParams(
@@ -154,7 +157,7 @@ class StudyActivity : AppCompatActivity() {
 
         val row = LinearLayout(this)
         row.orientation = LinearLayout.HORIZONTAL
-        row.setPadding(20, 4, 20, 32)
+        row.setPadding(px(12), px(4), px(12), px(8))
         val prev = MaterialButton(this)
         prev.text = "上一步"
         prev.isAllCaps = false
@@ -179,7 +182,7 @@ class StudyActivity : AppCompatActivity() {
         row.addView(prev)
         row.addView(next, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = 20
+                marginStart = px(8)
             })
         root.addView(row, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))

@@ -16,7 +16,7 @@ import com.google.android.material.card.MaterialCardView
 import com.sanqi.coach.data.GameStore
 import com.sanqi.coach.data.StoredGame
 
-class HomeActivity : AppCompatActivity() {
+class HomeActivity : ImmersiveActivity() {
 
     private lateinit var root: LinearLayout
 
@@ -34,14 +34,14 @@ class HomeActivity : AppCompatActivity() {
         val scroll = ScrollView(this)
         root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setPadding(48, 72, 48, 56)
+        root.setPadding(px(20), px(24), px(20), px(20))
         scroll.addView(root)
 
         val title = TextView(this)
         title.text = "三棋思考教练"
         title.textSize = 30f
         title.setTypeface(Typeface.DEFAULT_BOLD)
-        title.setTextColor(Color.parseColor("#1B5E20"))
+        title.setTextColor(getColor(com.sanqi.coach.R.color.coach_accent))
         root.addView(title)
 
         val sub = TextView(this)
@@ -50,7 +50,7 @@ class HomeActivity : AppCompatActivity() {
         sub.setTextColor(Color.parseColor("#555555"))
         val subLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        subLp.topMargin = 8
+        subLp.topMargin = px(8)
         root.addView(sub, subLp)
 
         val unfinished = GameStore.list(this).firstOrNull { !it.finished }
@@ -61,7 +61,7 @@ class HomeActivity : AppCompatActivity() {
             b.setOnClickListener { resume(unfinished) }
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            lp.topMargin = 40
+            lp.topMargin = px(16)
             root.addView(b, lp)
         }
 
@@ -79,11 +79,11 @@ class HomeActivity : AppCompatActivity() {
         addEntry(row2, "设置") { startActivity(Intent(this, SettingsActivity::class.java)) }
         val r1 = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        r1.topMargin = 40
+        r1.topMargin = px(20)
         root.addView(row1, r1)
         val r2 = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        r2.topMargin = 20
+        r2.topMargin = px(8)
         root.addView(row2, r2)
 
         scroll.fitsSystemWindows = true
@@ -92,13 +92,16 @@ class HomeActivity : AppCompatActivity() {
 
     private fun addCard(label: String, desc: String, onClick: () -> Unit) {
         val card = MaterialCardView(this)
-        card.radius = 24f
-        card.cardElevation = 6f
+        card.radius = px(16).toFloat()
+        card.cardElevation = 0f
+        card.strokeWidth = px(1)
+        card.strokeColor = getColor(com.sanqi.coach.R.color.coach_outline)
+        card.setCardBackgroundColor(getColor(com.sanqi.coach.R.color.coach_surface))
         card.useCompatPadding = true
         card.setOnClickListener { onClick() }
         val inner = LinearLayout(this)
         inner.orientation = LinearLayout.VERTICAL
-        inner.setPadding(40, 32, 40, 32)
+        inner.setPadding(px(18), px(16), px(18), px(16))
         val t = TextView(this)
         t.text = label
         t.textSize = 22f
@@ -111,13 +114,13 @@ class HomeActivity : AppCompatActivity() {
         d.setTextColor(Color.parseColor("#666666"))
         val dlp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        dlp.topMargin = 6
+        dlp.topMargin = px(6)
         inner.addView(d, dlp)
         card.addView(inner, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         val lp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        lp.topMargin = 36
+        lp.topMargin = px(12)
         root.addView(card, lp)
     }
 
@@ -127,7 +130,7 @@ class HomeActivity : AppCompatActivity() {
         b.isAllCaps = false
         b.setOnClickListener { onClick() }
         val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        lp.marginEnd = 20
+        lp.marginEnd = px(8)
         row.addView(b, lp)
     }
 
