@@ -1,6 +1,7 @@
 package com.sanqi.coach.data
 
 import android.content.Context
+import android.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -25,7 +26,8 @@ data class StoredGame(
     val updatedAt: Long,
     val finished: Boolean,
     val resultText: String,
-    val moves: List<StoredMove>
+    val moves: List<StoredMove>,
+    val deadStones: List<Int> = emptyList()
 )
 
 /**
@@ -63,16 +65,26 @@ object GameStore {
         root.put("finished", game.finished)
         root.put("result", game.resultText)
         root.put("moves", arr)
-        File(dir(ctx), game.id + ".json").writeText(root.toString())
+        root.put("deadStones", JSONArray(game.deadStones))
+        val file = AtomicFile(File(dir(ctx), game.id + ".json"))
+        val stream = file.startWrite()
+        try {
+            stream.write(root.toString().toByteArray(Charsets.UTF_8))
+            file.finishWrite(stream)
+        } catch (error: Exception) {
+            file.failWrite(stream)
+            throw error
+        }
     }
 
     fun list(ctx: Context): List<StoredGame> {
         val out = mutableListOf<StoredGame>()
         val files = dir(ctx).listFiles() ?: return out
-        for (f in files) {
-            if (!f.name.endsWith(".json")) continue
+        val records = files.filter { it.name.endsWith(".json") || it.name.endsWith(".json.bak") }
+            .map { File(it.parentFile, it.name.removeSuffix(".bak")) }.distinctBy { it.name }
+        for (f in records) {
             try {
-                val o = JSONObject(f.readText())
+                val o = JSONObject(AtomicFile(f).openRead().bufferedReader().use { it.readText() })
                 out.add(parse(f, o))
             } catch (_: Exception) {
             }
@@ -83,9 +95,9 @@ object GameStore {
 
     fun load(ctx: Context, id: String): StoredGame? {
         val f = File(dir(ctx), id + ".json")
-        if (!f.exists()) return null
+        if (!f.exists() && !File(f.path + ".bak").exists()) return null
         return try {
-            parse(f, JSONObject(f.readText()))
+            parse(f, JSONObject(AtomicFile(f).openRead().bufferedReader().use { it.readText() }))
         } catch (_: Exception) {
             null
         }
@@ -93,7 +105,7 @@ object GameStore {
 
     fun delete(ctx: Context, id: String) {
         val f = File(dir(ctx), id + ".json")
-        if (f.exists()) f.delete()
+        AtomicFile(f).delete()
     }
 
     private fun parse(f: File, o: JSONObject): StoredGame {
@@ -123,7 +135,8 @@ object GameStore {
             updatedAt = o.optLong("updatedAt", 0L),
             finished = o.optBoolean("finished", false),
             resultText = o.optString("result", ""),
-            moves = moves
+            moves = moves,
+            deadStones = o.optJSONArray("deadStones")?.let { marks -> List(marks.length()) { marks.getInt(it) } }.orEmpty()
         )
     }
 }

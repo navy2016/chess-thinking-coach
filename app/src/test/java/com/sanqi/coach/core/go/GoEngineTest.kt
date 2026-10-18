@@ -123,7 +123,7 @@ class GoEngineTest {
         val s = e.scoreArea(p, emptySet())
         assertEquals(1.0, s.black, 0.001)
         assertEquals(8.5, s.white, 0.001)
-        assertEquals("白胜7.5子", s.winnerText)
+        assertEquals("白胜3.75子", s.winnerText)
     }
 
     @Test
@@ -167,6 +167,38 @@ class GoEngineTest {
         val applied = e.applyMove(p, r.bestMove!!)
         assertEquals(1, applied.captured)
         assertEquals(GameStatus.ONGOING, applied.status)
+    }
+
+    @Test
+    fun testPassAndKoValidationAgreeWithLegalMoves() {
+        val engine = GoEngine(9)
+        val board = IntArray(81)
+        board[1] = 1; board[9] = 1; board[19] = 1
+        board[2] = 2; board[20] = 2; board[12] = 2; board[10] = 2
+        val captured = engine.applyMove(pos9(board, 0), Move(11, 11)).position
+        assertFalse(engine.isMoveLegal(captured, Move(10, 10)))
+        assertTrue(engine.isMoveLegal(captured, Move(-1, -1)))
+        assertTrue(engine.legalMoves(captured).contains(Move(-1, -1)))
+        assertFalse(engine.isMoveLegal(captured, Move(-1, 10)))
+        assertFalse(engine.isMoveLegal(captured, Move(81, 81)))
+        val first = engine.applyMove(captured, Move(-1, -1)).position
+        val second = engine.applyMove(first, Move(-1, -1)).position
+        assertFalse(engine.isMoveLegal(second, Move(-1, -1)))
+    }
+
+    @Test
+    fun testOpeningEvaluationDoesNotAwardTheEntireBoard() {
+        val engine = GoEngine(19, 0.0)
+        val after = engine.applyMove(engine.initialPosition(), Move(60, 60)).position
+        assertTrue(kotlin.math.abs(engine.evaluate(after)) < 1000)
+    }
+
+    @Test
+    fun testFractionalScoringKeepsQuarterZi() {
+        val engine = GoEngine(9, 0.5)
+        val board = IntArray(81)
+        board[20] = 1; board[60] = 2
+        assertEquals("白胜0.25子", engine.scoreArea(pos9(board, 0), emptySet()).winnerText)
     }
 
     @Test

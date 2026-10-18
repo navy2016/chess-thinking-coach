@@ -1,7 +1,7 @@
 package com.sanqi.coach.core.go
 
 import com.sanqi.coach.core.AppliedMove
-import com.sanqi.coach.core.GameEngine
+import com.sanqi.coach.core.SearchSupport
 import com.sanqi.coach.core.GameStatus
 import com.sanqi.coach.core.Move
 import com.sanqi.coach.core.SearchResult
@@ -23,7 +23,9 @@ data class GoScore(val black: Double, val white: Double, val winnerText: String)
  * 围棋引擎：中国规则（数子法），支持提子、自杀禁着、简单劫、PASS 与终局计分。
  * evaluate/searchBest 为启发式，用于教练流程的粗评与应手。
  */
-class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : GameEngine<GoPosition> {
+class GoEngine(private val size: Int = 19, val komi: Double = 7.5) : SearchSupport<GoPosition> {
+
+    override val heuristic: Boolean = true
 
     override fun initialPosition(): GoPosition =
         GoPosition(size, IntArray(size * size), 0, IntArray(2), -1, 0)
@@ -97,15 +99,23 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
             if (idx == pos.koPoint) continue
             if (tryPlace(pos, idx, color) != null) out.add(Move(idx, idx, 0))
         }
+        out.add(Move(-1, -1))
         return out
     }
 
     fun isMoveLegal(pos: GoPosition, move: Move): Boolean {
-        if (move.from < 0 || move.to < 0) return true
-        if (move.from != move.to) return false
         if (pos.consecutivePasses >= 2) return false
+        if (move == Move(-1, -1)) return true
+        if (move.from != move.to || move.to !in pos.board.indices || move.promo != 0) return false
+        if (move.to == pos.koPoint) return false
         return tryPlace(pos, move.to, pos.toMove + 1) != null
     }
+
+    override fun searchPosition(pos: GoPosition, move: Move): GoPosition = applyMove(pos, move).position
+    override fun inCheck(pos: GoPosition): Boolean = false
+    override fun isTactical(pos: GoPosition, move: Move): Boolean = false
+    override fun terminalScore(pos: GoPosition, moves: List<Move>, ply: Int): Int? =
+        if (pos.consecutivePasses >= 2) evaluate(pos) else null
 
     override fun applyMove(pos: GoPosition, move: Move): AppliedMove<GoPosition> {
         if (move.from < 0 || move.to < 0) {
@@ -152,7 +162,7 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
     }
 
     /** 黑白各自的（活子数 + 单色地域），中立点不计。 */
-    private fun territoryCount(pos: GoPosition): Pair<Int, Int> {
+    private fun territoryCount(pos: GoPosition, bounded: Boolean = false): Pair<Int, Int> {
         val n = pos.size
         val visited = BooleanArray(n * n)
         var black = 0
@@ -182,8 +192,10 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
                     }
                 }
             }
-            if (touchBlack && !touchWhite) black += region.size
-            else if (touchWhite && !touchBlack) white += region.size
+            if (!bounded || region.size <= pos.size) {
+                if (touchBlack && !touchWhite) black += region.size
+                else if (touchWhite && !touchBlack) white += region.size
+            }
         }
         return Pair(black, white)
     }
@@ -200,8 +212,8 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
         val whitePts = w + komi
         val diff = blackPts - whitePts
         val winnerText = when {
-            diff > 0 -> "黑胜" + fmtNum(diff) + "子"
-            diff < 0 -> "白胜" + fmtNum(-diff) + "子"
+            diff > 0 -> "黑胜" + fmtNum(diff / 2) + "子"
+            diff < 0 -> "白胜" + fmtNum(-diff / 2) + "子"
             else -> "和棋"
         }
         return GoScore(blackPts, whitePts, winnerText)
@@ -209,17 +221,26 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
 
     private fun fmtNum(d: Double): String =
         if (d == d.toLong().toDouble()) d.toLong().toString()
-        else String.format(Locale.US, "%.1f", d)
+        else String.format(Locale.US, "%.2f", d).trimEnd('0').trimEnd('.')
 
     override fun evaluate(pos: GoPosition): Int {
-        val (black, white) = territoryCount(pos)
-        val blackLead = black - white - komi
-        val score = (blackLead * 100).toInt()
+        val (black, white) = territoryCount(pos, pos.consecutivePasses < 2)
+        var score = ((black - white - komi) * 100).toInt()
+        if (pos.consecutivePasses < 2) {
+            val seen = HashSet<Int>()
+            for (idx in pos.board.indices) {
+                if (pos.board[idx] == 0 || idx in seen) continue
+                val (group, liberties) = groupOf(pos.board, pos.size, idx)
+                seen.addAll(group)
+                val safety = minOf(liberties.size, 4) * 8 - if (liberties.size == 1) group.size * 85 else 0
+                score += if (pos.board[idx] == 1) safety else -safety
+            }
+        }
         return if (pos.toMove == 0) score else -score
     }
 
-    override fun searchBest(pos: GoPosition, depth: Int): SearchResult {
-        if (pos.consecutivePasses >= 2) return SearchResult(null, evaluate(pos))
+    override fun searchMoves(pos: GoPosition): List<Move> {
+        if (pos.consecutivePasses >= 2) return emptyList()
         val color = pos.toMove + 1
         val enemyColor = color xor 3
         val b = pos.board
@@ -238,8 +259,7 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
             }
         }
 
-        var bestMove: Move? = null
-        var bestScore = Int.MIN_VALUE
+        val candidates = ArrayList<Pair<Move, Int>>()
         for (idx in 0 until pos.size * pos.size) {
             if (idx == pos.koPoint) continue
             val placed = tryPlace(pos, idx, color) ?: continue
@@ -283,12 +303,32 @@ class GoEngine(private val size: Int = 19, private val komi: Double = 7.5) : Gam
                 }
             }
             if (minDist in 2..4) s += 30 - minDist * 4
-            if (minDist > 6) s -= (minDist - 6) * 3
-            if (s > bestScore) {
-                bestScore = s
-                bestMove = Move(idx, idx, 0)
-            }
+            if (minDist in 7..998) s -= (minDist - 6) * 3
+            candidates.add(Move(idx, idx, 0) to s)
         }
-        return SearchResult(bestMove, evaluate(pos), if (bestMove == null) emptyList() else listOf(bestMove))
+        return candidates.sortedByDescending { it.second }.take(8).map { it.first } + Move(-1, -1)
+    }
+
+    override fun searchBest(pos: GoPosition, depth: Int): SearchResult {
+        fun search(p: GoPosition, remaining: Int, alpha: Int, beta: Int): SearchResult {
+            if (p.consecutivePasses >= 2 || remaining <= 0) return SearchResult(null, evaluate(p))
+            var best: Move? = null
+            var score = -200000
+            var line: List<Move> = emptyList()
+            var a = alpha
+            for (move in searchMoves(p)) {
+                val reply = search(searchPosition(p, move), remaining - 1, -beta, -a)
+                val value = -reply.score
+                if (value > score) {
+                    best = move
+                    score = value
+                    line = listOf(move) + reply.pv
+                }
+                a = maxOf(a, score)
+                if (a >= beta) break
+            }
+            return SearchResult(best, score, line)
+        }
+        return search(pos, depth.coerceIn(1, 4), -200000, 200000)
     }
 }

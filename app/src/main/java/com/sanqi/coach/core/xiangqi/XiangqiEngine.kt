@@ -1,7 +1,7 @@
 package com.sanqi.coach.core.xiangqi
 
 import com.sanqi.coach.core.AppliedMove
-import com.sanqi.coach.core.GameEngine
+import com.sanqi.coach.core.SearchSupport
 import com.sanqi.coach.core.GameStatus
 import com.sanqi.coach.core.Move
 import com.sanqi.coach.core.SearchResult
@@ -16,7 +16,7 @@ data class XiangqiPosition(
  * 中国象棋引擎：完整规则（蹩马腿、塞象眼、炮隔子、九宫、将帅照面）、
  * 中文纵线记谱、子力估值与 alpha-beta 搜索（含吃子静态延伸）。
  */
-class XiangqiEngine : GameEngine<XiangqiPosition> {
+class XiangqiEngine : SearchSupport<XiangqiPosition> {
 
     companion object {
         const val MATE = 100000
@@ -238,11 +238,11 @@ class XiangqiEngine : GameEngine<XiangqiPosition> {
             val legX: Int
             val legY: Int
             if (abs(d[0]) == 2) {
-                legX = x + d[0] / 2
-                legY = y
+                legX = nx - d[0] / 2
+                legY = ny
             } else {
-                legX = x
-                legY = y + d[1] / 2
+                legX = nx
+                legY = ny - d[1] / 2
             }
             if (b[legY * 9 + legX] == 0) return true
         }
@@ -264,7 +264,7 @@ class XiangqiEngine : GameEngine<XiangqiPosition> {
         return false
     }
 
-    private fun inCheck(pos: XiangqiPosition): Boolean {
+    override fun inCheck(pos: XiangqiPosition): Boolean {
         val k = kingSquare(pos.board, pos.toMove == 0)
         if (k < 0) return true
         return isAttackedBoard(pos.board, k, pos.toMove == 1)
@@ -379,27 +379,41 @@ class XiangqiEngine : GameEngine<XiangqiPosition> {
         return if (pos.toMove == 0) s else -s
     }
 
-    private fun applyForSearch(pos: XiangqiPosition, move: Move): XiangqiPosition {
+    override fun searchPosition(pos: XiangqiPosition, move: Move): XiangqiPosition {
         val b = pos.board.copyOf()
         b[move.to] = b[move.from]
         b[move.from] = 0
         return XiangqiPosition(b, pos.toMove xor 1)
     }
 
+    override fun searchMoves(pos: XiangqiPosition): List<Move> = orderMoves(pos, legalMoves(pos))
+
+    override fun isTactical(pos: XiangqiPosition, move: Move): Boolean = pos.board[move.to] != 0
+
+    override fun terminalScore(pos: XiangqiPosition, moves: List<Move>, ply: Int): Int? =
+        if (moves.isEmpty()) { if (inCheck(pos)) -MATE + ply else 0 } else null
+
     private fun orderMoves(pos: XiangqiPosition, moves: List<Move>): List<Move> =
         moves.sortedByDescending { m ->
             val victim = abs(pos.board[m.to])
-            if (victim == 0) 0 else victim * 10 - abs(pos.board[m.from])
+            if (victim == 0) 0 else VALUES[victim] * 10 - VALUES[abs(pos.board[m.from])]
         }
 
     private fun quiescence(pos: XiangqiPosition, alpha: Int, beta: Int, qd: Int): Int {
+        val moves = legalMoves(pos)
+        terminalScore(pos, moves, qd)?.let { return it }
+        val checked = inCheck(pos)
         val stand = evaluate(pos)
-        if (stand >= beta) return beta
-        var a = if (stand > alpha) stand else alpha
-        if (qd >= 4) return a
-        val caps = legalMoves(pos).filter { pos.board[it.to] != 0 }
+        if (!checked && stand >= beta) return beta
+        var a = if (!checked && stand > alpha) stand else alpha
+        if (!checked && qd >= 4) return a
+        val caps = if (checked) moves else moves.filter { isTactical(pos, it) }
+        if (qd >= 6) return caps.maxOf { m ->
+            val child = searchPosition(pos, m)
+            -(terminalScore(child, legalMoves(child), qd + 1) ?: evaluate(child))
+        }
         for (m in orderMoves(pos, caps)) {
-            val sc = -quiescence(applyForSearch(pos, m), -beta, -a, qd + 1)
+            val sc = -quiescence(searchPosition(pos, m), -beta, -a, qd + 1)
             if (sc >= beta) return beta
             if (sc > a) a = sc
         }
@@ -413,7 +427,7 @@ class XiangqiEngine : GameEngine<XiangqiPosition> {
         var a = alpha
         var best = -Int.MAX_VALUE
         for (m in orderMoves(pos, moves)) {
-            val sc = -negamax(applyForSearch(pos, m), depth - 1, -beta, -a, ply + 1)
+            val sc = -negamax(searchPosition(pos, m), depth - 1, -beta, -a, ply + 1)
             if (sc > best) best = sc
             if (best > a) a = best
             if (a >= beta) break
@@ -428,7 +442,7 @@ class XiangqiEngine : GameEngine<XiangqiPosition> {
         var bestScore = -Int.MAX_VALUE
         var alpha = -MATE * 2
         for (m in orderMoves(pos, moves)) {
-            val sc = -negamax(applyForSearch(pos, m), depth - 1, -MATE * 2, -alpha, 1)
+            val sc = -negamax(searchPosition(pos, m), depth - 1, -MATE * 2, -alpha, 1)
             if (sc > bestScore) {
                 bestScore = sc
                 bestMove = m

@@ -10,8 +10,10 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import com.sanqi.coach.core.Move
-import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 
 interface BoardAdapter {
     fun columns(): Int
@@ -29,6 +31,7 @@ interface BoardAdapter {
     fun drawBoard(canvas: Canvas, rect: RectF, cell: Float, originX: Float, originY: Float, showCoords: Boolean)
 
     fun drawPiece(canvas: Canvas, cell: Float, idx: Int, cx: Float, cy: Float)
+    fun pieceSide(idx: Int): Int?
 }
 
 fun drawCharCentered(canvas: Canvas, textPaint: Paint, ch: String, cx: Float, cy: Float, size: Float, color: Int) {
@@ -54,6 +57,12 @@ class BoardView @JvmOverloads constructor(
     var hintTo: Int = -1
     var deadMarks: Set<Int> = emptySet()
     var showCoords: Boolean = true
+    var variationMoves: List<Move> = emptyList()
+    var variationStartSide: Int = 0
+    var numberVariation: Boolean = false
+    private var pressedX: Float = 0f
+    private var pressedY: Float = 0f
+    private var tapCancelled: Boolean = false
 
     private val rect = RectF()
     private var cell = 0f
@@ -84,8 +93,9 @@ class BoardView @JvmOverloads constructor(
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val hMode = MeasureSpec.getMode(heightMeasureSpec)
         val h = MeasureSpec.getSize(heightMeasureSpec)
-        val side = if (hMode == MeasureSpec.UNSPECIFIED || h == 0) w else min(w, h)
-        setMeasuredDimension(side, side)
+        val a = adapter
+        val desired = (w * ((a?.rows() ?: 8) + 1.6f) / ((a?.columns() ?: 8) + 1.6f)).toInt()
+        setMeasuredDimension(w, if (hMode == MeasureSpec.UNSPECIFIED || h == 0) desired else h)
     }
 
     private fun centerOf(idx: Int): FloatArray {
@@ -106,7 +116,8 @@ class BoardView @JvmOverloads constructor(
         val a = adapter ?: return
         val cols = a.columns()
         val rows = a.rows()
-        cell = min(width, height) / (max(cols, rows) + if (showCoords) 1.6f else 0.7f)
+        val padding = if (showCoords) 1.6f else 0.7f
+        cell = min(width / (cols + padding), height / (rows + padding))
         val bw = cols * cell
         val bh = rows * cell
         rect.set((width - bw) / 2f, (height - bh) / 2f, (width + bw) / 2f, (height + bh) / 2f)
@@ -134,12 +145,28 @@ class BoardView @JvmOverloads constructor(
             canvas.drawCircle(c[0], c[1], cell * 0.13f, dotPaint)
         }
         pendingMove?.let { m ->
-            ring(canvas, m.to, cell * 0.52f, "#F9A825", cell * 0.09f)
-            if (m.from >= 0) {
-                val c = centerOf(m.from)
-                canvas.drawCircle(c[0], c[1], cell * 0.1f, dotPaint)
+            ring(canvas, m.to, cell * 0.50f, "#803FE2", cell * 0.075f)
+            if (m.from >= 0 && m.from != m.to) arrow(canvas, m.from, m.to, 230)
+        }
+        for ((index, move) in variationMoves.withIndex()) {
+            if (move.to < 0) continue
+            if (numberVariation) {
+                val side = (variationStartSide + index) % 2
+                if (a.pieceSide(move.to) != side || variationMoves.drop(index + 1).any { it.to == move.to }) continue
+                val c = centerOf(move.to)
+                val black = side == 0
+                dotPaint.color = if (black) Color.parseColor("#211D24") else Color.parseColor("#FFFCF5")
+                canvas.drawCircle(c[0], c[1], cell * 0.25f, dotPaint)
+                ring(canvas, move.to, cell * 0.25f, "#803FE2", cell * 0.045f)
+                drawCharCentered(canvas, labelPaint, (index + 1).toString(), c[0], c[1], cell * 0.30f,
+                    if (black) Color.WHITE else Color.parseColor("#302936"))
+                if (index > 0 && variationMoves[index - 1].to >= 0) arrow(canvas, variationMoves[index - 1].to, move.to, 110)
+            } else if (move.from >= 0 && move.from != move.to) {
+                arrow(canvas, move.from, move.to, if (index == variationMoves.lastIndex) 220 else 100)
             }
         }
+        dotPaint.color = Color.parseColor("#1976D2")
+        labelPaint.color = Color.parseColor("#6D5A3F")
         if (hintTo >= 0) ring(canvas, hintTo, cell * 0.5f, "#FFD700", cell * 0.1f)
         for (d in deadMarks) {
             val c = centerOf(d)
@@ -147,6 +174,22 @@ class BoardView @JvmOverloads constructor(
             crossPaint.strokeWidth = cell * 0.07f
             canvas.drawLine(c[0] - s, c[1] - s, c[0] + s, c[1] + s, crossPaint)
             canvas.drawLine(c[0] - s, c[1] + s, c[0] + s, c[1] - s, crossPaint)
+        }
+    }
+
+    private fun arrow(canvas: Canvas, from: Int, to: Int, alpha: Int) {
+        if (from == to) return
+        val a = centerOf(from)
+        val b = centerOf(to)
+        val angle = atan2(b[1] - a[1], b[0] - a[0])
+        val endX = b[0] - cos(angle) * cell * 0.23f
+        val endY = b[1] - sin(angle) * cell * 0.23f
+        markPaint.color = Color.argb(alpha, 128, 63, 226)
+        markPaint.strokeWidth = cell * 0.065f
+        canvas.drawLine(a[0], a[1], endX, endY, markPaint)
+        for (offset in floatArrayOf(-0.55f, 0.55f)) {
+            canvas.drawLine(endX, endY, endX - cos(angle + offset) * cell * 0.22f,
+                endY - sin(angle + offset) * cell * 0.22f, markPaint)
         }
     }
 
@@ -172,9 +215,30 @@ class BoardView @JvmOverloads constructor(
         }
     }
 
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action != MotionEvent.ACTION_DOWN) return super.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                pressedX = event.x
+                pressedY = event.y
+                tapCancelled = false
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+                if (kotlin.math.abs(event.x - pressedX) > slop || kotlin.math.abs(event.y - pressedY) > slop) tapCancelled = true
+                return true
+            }
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> { tapCancelled = true; return true }
+            MotionEvent.ACTION_UP -> if (tapCancelled) return true
+            else -> return true
+        }
         val a = adapter ?: return false
+        if (cell <= 0f) return true
         val cols = a.columns()
         val rows = a.rows()
         val gx: Int
@@ -186,6 +250,7 @@ class BoardView @JvmOverloads constructor(
             gx = Math.round(fx)
             gy = Math.round(fy)
         } else {
+            if (!rect.contains(event.x, event.y)) return true
             val fx = ((event.x - rect.left) / cell).toInt()
             val fy = ((event.y - rect.top) / cell).toInt()
             if (fx < 0 || fx >= cols || fy < 0 || fy >= rows) return true

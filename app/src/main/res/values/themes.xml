@@ -7,4 +7,12 @@
         <item name="android:statusBarColor">@color/brandDark</item>
         <item name="android:windowBackground">@color/paper</item>
     </style>
+    <style name="Theme.Coach.Match" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/coach_accent</item>
+        <item name="colorOnPrimary">@color/coach_on_accent</item>
+        <item name="android:windowBackground">@color/coach_surface</item>
+        <item name="android:statusBarColor">@color/coach_surface</item>
+        <item name="android:navigationBarColor">@color/coach_surface</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
 </resources>

@@ -34,7 +34,7 @@ class GameKit(val kind: String, private val goSize: Int) {
     fun positionFromBoard(board: IntArray, toMove: Int): Any = when (kind) {
         "go" -> GoPosition(goSize, board, toMove, intArrayOf(0, 0), -1, 0)
         "xiangqi" -> xiangqiEngine!!.fromBoard(board, toMove)
-        "chess" -> chessEngine!!.fromBoard(board, true, 0, -1)
+        "chess" -> chessEngine!!.fromBoard(board, toMove == 0, 0, -1)
         else -> throw IllegalArgumentException(kind)
     }
 

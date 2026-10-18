@@ -35,6 +35,8 @@ class GoBoard(private val engine: GoEngine) : BoardAdapter {
         typeface = Typeface.DEFAULT_BOLD
     }
 
+    override fun pieceSide(idx: Int): Int? = pos?.board?.get(idx)?.takeIf { it != 0 }?.minus(1)
+
     override fun columns(): Int = pos?.size ?: 19
     override fun rows(): Int = pos?.size ?: 19
     override fun intersections(): Boolean = true
@@ -101,6 +103,8 @@ class XiangqiBoard(private val engine: XiangqiEngine) : BoardAdapter {
         typeface = Typeface.DEFAULT_BOLD
     }
 
+    override fun pieceSide(idx: Int): Int? = pos?.board?.get(idx)?.takeIf { it != 0 }?.let { if (it > 0) 0 else 1 }
+
     override fun columns(): Int = 9
     override fun rows(): Int = 10
     override fun intersections(): Boolean = true
@@ -166,15 +170,8 @@ class ChessBoard(private val engine: ChessEngine) : BoardAdapter {
 
     private val light = Paint()
     private val dark = Paint()
-    private val disc = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        color = Color.parseColor("#333333")
-    }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textAlign = Paint.Align.CENTER
-        typeface = Typeface.DEFAULT_BOLD
-    }
+
+    override fun pieceSide(idx: Int): Int? = pos?.board?.get(idx)?.takeIf { it != 0 }?.let { if (it > 0) 0 else 1 }
 
     override fun columns(): Int = 8
     override fun rows(): Int = 8
@@ -203,14 +200,6 @@ class ChessBoard(private val engine: ChessEngine) : BoardAdapter {
         val p = pos ?: return
         val code = engine.pieceAt(p, idx)
         if (code == 0) return
-        val white = engine.isWhitePiece(code)
-        disc.color = if (white) Color.parseColor("#FAFAFA") else Color.parseColor("#303030")
-        ring.color = if (white) Color.parseColor("#333333") else Color.parseColor("#AAAAAA")
-        ring.strokeWidth = cell * 0.05f
-        canvas.drawCircle(cx, cy, cell * 0.42f, disc)
-        canvas.drawCircle(cx, cy, cell * 0.42f, ring)
-        val letter = engine.pieceLetter(code).uppercaseChar().toString()
-        drawCharCentered(canvas, textPaint, letter, cx, cy, cell * 0.44f,
-            if (white) Color.parseColor("#222222") else Color.parseColor("#FAFAFA"))
+        ChessPiecePainter.draw(canvas, cell, cx, cy, kotlin.math.abs(code), engine.isWhitePiece(code))
     }
 }

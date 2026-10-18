@@ -14,7 +14,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".ui.GameActivity" android:exported="false" />
+        <activity android:name=".ui.GameActivity" android:exported="false" android:theme="@style/Theme.Coach.Match" />
         <activity android:name=".ui.StudyActivity" android:exported="false" />
         <activity android:name=".ui.PuzzleActivity" android:exported="false" />
         <activity android:name=".ui.ReplayListActivity" android:exported="false" />

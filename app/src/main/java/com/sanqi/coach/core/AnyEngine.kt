@@ -5,7 +5,14 @@ package com.sanqi.coach.core
  * 让 UI 层可以用统一类型持有三种引擎。运行时 P 已被擦除，转型安全由构造方保证。
  */
 @Suppress("UNCHECKED_CAST")
-class AnyEngine<P : Any>(private val inner: GameEngine<P>) : GameEngine<Any> {
+class AnyEngine<P : Any>(private val inner: SearchSupport<P>) : SearchSupport<Any> {
+
+    override val heuristic: Boolean get() = inner.heuristic
+    override fun searchPosition(pos: Any, move: Move): Any = inner.searchPosition(pos as P, move)
+    override fun searchMoves(pos: Any): List<Move> = inner.searchMoves(pos as P)
+    override fun inCheck(pos: Any): Boolean = inner.inCheck(pos as P)
+    override fun isTactical(pos: Any, move: Move): Boolean = inner.isTactical(pos as P, move)
+    override fun terminalScore(pos: Any, moves: List<Move>, ply: Int): Int? = inner.terminalScore(pos as P, moves, ply)
 
     override fun initialPosition(): Any = inner.initialPosition()
 

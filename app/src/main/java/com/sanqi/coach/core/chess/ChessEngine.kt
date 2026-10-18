@@ -1,7 +1,7 @@
 package com.sanqi.coach.core.chess
 
 import com.sanqi.coach.core.AppliedMove
-import com.sanqi.coach.core.GameEngine
+import com.sanqi.coach.core.SearchSupport
 import com.sanqi.coach.core.GameStatus
 import com.sanqi.coach.core.Move
 import com.sanqi.coach.core.SearchResult
@@ -20,7 +20,7 @@ data class ChessPosition(
  * SAN 记谱、子力+位置估值、alpha-beta 搜索（含吃子静态延伸）。
  * 棋子编码：白 1王 2后 3车 4象 5马 6兵（正数），黑为负。
  */
-class ChessEngine : GameEngine<ChessPosition> {
+class ChessEngine : SearchSupport<ChessPosition> {
 
     companion object {
         const val MATE = 100000
@@ -222,7 +222,7 @@ class ChessEngine : GameEngine<ChessPosition> {
         return -1
     }
 
-    private fun applyLight(pos: ChessPosition, move: Move): ChessPosition {
+    override fun searchPosition(pos: ChessPosition, move: Move): ChessPosition {
         val b = pos.board.copyOf()
         val white = pos.whiteToMove
         val piece = abs(b[move.from])
@@ -261,7 +261,7 @@ class ChessEngine : GameEngine<ChessPosition> {
         return ChessPosition(b, !white, castling, ep, halfmove)
     }
 
-    private fun inCheck(pos: ChessPosition): Boolean {
+    override fun inCheck(pos: ChessPosition): Boolean {
         val k = kingSquare(pos.board, pos.whiteToMove)
         if (k < 0) return true
         return attacked(pos.board, k, !pos.whiteToMove)
@@ -271,7 +271,7 @@ class ChessEngine : GameEngine<ChessPosition> {
         val out = ArrayList<Move>()
         val white = pos.whiteToMove
         for (m in pseudoMoves(pos)) {
-            val child = applyLight(pos, m)
+            val child = searchPosition(pos, m)
             val k = kingSquare(child.board, white)
             if (k < 0) continue
             if (!attacked(child.board, k, !white)) out.add(m)
@@ -290,7 +290,7 @@ class ChessEngine : GameEngine<ChessPosition> {
     }
 
     override fun applyMove(pos: ChessPosition, move: Move): AppliedMove<ChessPosition> {
-        val child = applyLight(pos, move)
+        val child = searchPosition(pos, move)
         val opponentMoves = legalMoves(child)
         val check = inCheck(child)
         val status = when {
@@ -384,22 +384,41 @@ class ChessEngine : GameEngine<ChessPosition> {
         return if (pos.whiteToMove) s else -s
     }
 
+    override fun searchMoves(pos: ChessPosition): List<Move> = orderMoves(pos, legalMoves(pos))
+
+    override fun isTactical(pos: ChessPosition, move: Move): Boolean =
+        pos.board[move.to] != 0 || move.promo != 0 ||
+            (abs(pos.board[move.from]) == 6 && move.to == pos.ep)
+
+    override fun terminalScore(pos: ChessPosition, moves: List<Move>, ply: Int): Int? = when {
+        moves.isEmpty() -> if (inCheck(pos)) -MATE + ply else 0
+        insufficientMaterial(pos) || pos.halfmove >= 100 -> 0
+        else -> null
+    }
+
     private fun orderMoves(pos: ChessPosition, moves: List<Move>): List<Move> =
         moves.sortedByDescending { m ->
             val victim = abs(pos.board[m.to])
-            var s = if (victim == 0) 0 else victim * 10 - abs(pos.board[m.from])
+            var s = if (victim == 0) 0 else VALUES[victim] * 10 - VALUES[abs(pos.board[m.from])]
             if (m.promo != 0) s += 80
             s
         }
 
     private fun quiescence(pos: ChessPosition, alpha: Int, beta: Int, qd: Int): Int {
+        val moves = legalMoves(pos)
+        terminalScore(pos, moves, qd)?.let { return it }
+        val checked = inCheck(pos)
         val stand = evaluate(pos)
-        if (stand >= beta) return beta
-        var a = if (stand > alpha) stand else alpha
-        if (qd >= 4) return a
-        val caps = legalMoves(pos).filter { pos.board[it.to] != 0 || it.promo != 0 }
+        if (!checked && stand >= beta) return beta
+        var a = if (!checked && stand > alpha) stand else alpha
+        if (!checked && qd >= 4) return a
+        val caps = if (checked) moves else moves.filter { isTactical(pos, it) }
+        if (qd >= 6) return caps.maxOf { m ->
+            val child = searchPosition(pos, m)
+            -(terminalScore(child, legalMoves(child), qd + 1) ?: evaluate(child))
+        }
         for (m in orderMoves(pos, caps)) {
-            val sc = -quiescence(applyLight(pos, m), -beta, -a, qd + 1)
+            val sc = -quiescence(searchPosition(pos, m), -beta, -a, qd + 1)
             if (sc >= beta) return beta
             if (sc > a) a = sc
         }
@@ -414,7 +433,7 @@ class ChessEngine : GameEngine<ChessPosition> {
         var a = alpha
         var best = -Int.MAX_VALUE
         for (m in orderMoves(pos, moves)) {
-            val sc = -negamax(applyLight(pos, m), depth - 1, -beta, -a, ply + 1)
+            val sc = -negamax(searchPosition(pos, m), depth - 1, -beta, -a, ply + 1)
             if (sc > best) best = sc
             if (best > a) a = best
             if (a >= beta) break
@@ -424,12 +443,12 @@ class ChessEngine : GameEngine<ChessPosition> {
 
     override fun searchBest(pos: ChessPosition, depth: Int): SearchResult {
         val moves = legalMoves(pos)
-        if (moves.isEmpty()) return SearchResult(null, if (inCheck(pos)) -MATE else 0)
+        terminalScore(pos, moves, 0)?.let { return SearchResult(null, it) }
         var bestMove = moves[0]
         var bestScore = -Int.MAX_VALUE
         var alpha = -MATE * 2
         for (m in orderMoves(pos, moves)) {
-            val sc = -negamax(applyLight(pos, m), depth - 1, -MATE * 2, -alpha, 1)
+            val sc = -negamax(searchPosition(pos, m), depth - 1, -MATE * 2, -alpha, 1)
             if (sc > bestScore) {
                 bestScore = sc
                 bestMove = m

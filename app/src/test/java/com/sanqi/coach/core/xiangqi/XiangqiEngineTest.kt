@@ -35,6 +35,20 @@ class XiangqiEngineTest {
     }
 
     @Test
+    fun testHorseCheckUsesAttackersLeg() {
+        val open = board(0 to 5, 4 to 1, 13 to 2, 23 to -4, 84 to -1)
+        val checked = pos(open, 0)
+        assertTrue(e.inCheck(checked))
+        assertFalse(e.legalMoves(checked).contains(Move(0, 9)))
+        val blocked = board(0 to 5, 4 to 1, 14 to 5, 23 to -4, 84 to -1)
+        assertFalse(e.inCheck(pos(blocked, 0)))
+        assertTrue(e.legalMoves(pos(blocked, 0)).contains(Move(0, 9)))
+        val mirrored = IntArray(90) { -open[89 - it] }
+        assertTrue(e.inCheck(pos(mirrored, 1)))
+        assertFalse(e.legalMoves(pos(mirrored, 1)).contains(Move(89, 80)))
+    }
+
+    @Test
     fun testElephantEyeAndRiver() {
         // 相在 (4,4)，象眼 (3,3)=30 被塞，(6,2)=24 与 (2,2)=20 的眼是 (5,3)/(3,3)
         val blocked = board(40 to 3, 30 to -7, *kingsTyped())

@@ -7,4 +7,12 @@
     <color name="paper">#F6F1E4</color>
     <color name="boardWood">#E7C58F</color>
     <color name="boardWoodDark">#B98E52</color>
+    <color name="coach_surface">#FFFCF5</color>
+    <color name="coach_accent">#805C3B</color>
+    <color name="coach_on_accent">#FFFFFF</color>
+    <color name="coach_outline">#C8BEB0</color>
+    <color name="coach_selected">#F1E8DA</color>
+    <color name="coach_purple">#803FE2</color>
+    <color name="coach_positive">#237946</color>
+    <color name="coach_warning">#AA402D</color>
 </resources>

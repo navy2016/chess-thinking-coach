@@ -139,6 +139,27 @@ class ChessEngineTest {
     }
 
     @Test
+    fun testSearchStopsAtDrawnRoot() {
+        val drawn = ChessPosition(board(0 to 1, 63 to -1, 8 to 6), true, 0, -1, 100)
+        val result = e.searchBest(drawn, 2)
+        assertEquals(null, result.bestMove)
+        assertEquals(0, result.score)
+    }
+
+    @Test
+    fun testQuiescenceRecognizesMateAfterForcedBlock() {
+        val p = pos(board(0 to 1, 8 to 6, 9 to 3, 7 to -3, 10 to -4, 63 to -1), true)
+        assertEquals(listOf(Move(9, 1)), e.legalMoves(p))
+        assertTrue(e.searchBest(p, 1).score < -90000)
+    }
+
+    @Test
+    fun testEnPassantIsTactical() {
+        val p = pos(board(36 to 6, 35 to -6, 4 to 1, 63 to -1), true, 0, 43)
+        assertTrue(e.isTactical(p, Move(36, 43)))
+    }
+
+    @Test
     fun testSearchFindsQueenCapture() {
         val b = board(35 to 2, 59 to -3, 0 to 1, 63 to -1)
         val r = e.searchBest(pos(b, false), 2)
