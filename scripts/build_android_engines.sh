@@ -15,6 +15,13 @@ CXX="$TOOLCHAIN/bin/aarch64-linux-android24-clang++"
 CMAKE="${ANDROID_HOME:?ANDROID_HOME is required}/cmake/3.22.1/bin/cmake"
 test -x "$CXX"
 test -x "$CMAKE"
+# KataGo's legacy SHA code expects BSD endian names not exposed by bionic's sys/types.h.
+"$CXX" -x c++ -include endian.h -fsyntax-only - <<'CPP'
+#if !defined(BYTE_ORDER) || !defined(LITTLE_ENDIAN) || !defined(BIG_ENDIAN)
+#error Android endian definitions are missing
+#endif
+static_assert(BYTE_ORDER == __BYTE_ORDER__, "System and compiler byte order disagree");
+CPP
 command -v 7z
 python3 scripts/prepare_engine_sources.py
 OUT="$ROOT/app/build/generated/engineLibs/arm64-v8a"
@@ -32,6 +39,7 @@ cp "$SOURCES/pikafish/src/pikafish" "$OUT/libpikafish.so"
     -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \
     -DCMAKE_BUILD_TYPE=Release -DUSE_BACKEND=EIGEN -DUSE_AVX2=OFF \
+    -DCMAKE_CXX_FLAGS="-include endian.h" \
     -DBUILD_DISTRIBUTED=OFF -DUSE_TCMALLOC=OFF -DNO_GIT_REVISION=ON \
     -DEIGEN3_INCLUDE_DIRS="$SOURCES/eigen" \
     -DZLIB_INCLUDE_DIR="$TOOLCHAIN/sysroot/usr/include" \
