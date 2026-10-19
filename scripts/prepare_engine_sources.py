@@ -56,6 +56,14 @@ for engine in CONFIG['engines']:
         (destination / '.source-revision').write_text(commit)
     if (destination / '.source-revision').read_text() != commit:
         raise RuntimeError('Engine source cache does not match pinned revision')
+    if identity == 'fairystockfish':
+        makefile = destination / 'src/Makefile'
+        original = makefile.read_text()
+        obsolete = ' -fexperimental-new-pass-manager'
+        if obsolete in original:
+            if original.count(obsolete) != 1:
+                raise RuntimeError('Unexpected Fairy-Stockfish compiler flags')
+            makefile.write_text(original.replace(obsolete, ''))
     licenses = ASSETS / 'licenses' / identity
     licenses.mkdir(parents=True, exist_ok=True)
     for filename in ('Copying.txt', 'LICENSE', 'AUTHORS', 'CONTRIBUTORS'):
@@ -96,12 +104,20 @@ for engine in CONFIG['engines']:
             models.append(dict(model, sha256=digest, bytes=path.stat().st_size))
             if identity == 'stockfish':
                 shutil.copy2(path, destination / 'src' / model['name'])
-    catalog.append(dict(id=identity, name=engine['name'], version=engine['version'],
+    catalog.append(dict(id=identity, binary=identity, games=engine['games'], name=engine['name'], version=engine['version'],
                         commit=commit, license=engine['license'], models=models))
+    for alternative in engine.get('alternatives', []):
+        alternative_models = []
+        for model in alternative['models']:
+            path = download(model['url'], model['name'])
+            alternative_models.append(dict(model, sha256=sha256(path), bytes=path.stat().st_size))
+        catalog.append(dict(id=alternative['id'], binary=identity, games=engine['games'], name=engine['name'],
+                            version=alternative['version'], commit=commit, license=alternative['license'], models=alternative_models))
 
 # Preserve the exact notices that cover separately downloaded model data.
 for name, url in [('pikafish-models.txt', 'https://raw.githubusercontent.com/official-pikafish/Networks/master/README.md'),
-                  ('katago-g170.txt', 'https://katagoarchive.org/g170/LICENSE.txt')]:
+                  ('katago-g170.txt', 'https://katagoarchive.org/g170/LICENSE.txt'),
+                  ('katago-network.html', 'https://katagotraining.org/network_license/')]:
     shutil.copy2(download(url, name), ASSETS / 'licenses' / name)
 
 eigen = SOURCES / 'eigen'
@@ -126,4 +142,6 @@ with tarfile.open(RELEASE / 'engine-corresponding-sources.tar.gz', 'w:gz') as ta
     for name in ('engine_sources.json', 'build_android_engines.sh', 'prepare_engine_sources.py'):
         tar.add(ROOT / 'scripts' / name, arcname='scripts/' + name)
     tar.add(ASSETS / 'licenses', arcname='licenses')
+    tar.add(ROOT / 'app/src/main/java/com/sanqi/coach/tts', arcname='speech/kotlin')
+    tar.add(ROOT / 'app/src/main/assets/speech', arcname='speech/notices')
 print('Prepared pinned sources and model catalog:', ASSETS / 'catalog.json')

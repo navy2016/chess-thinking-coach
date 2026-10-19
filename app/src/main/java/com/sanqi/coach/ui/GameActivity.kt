@@ -98,11 +98,18 @@ class GameActivity : ImmersiveActivity() {
     private lateinit var actions: LinearLayout
     private lateinit var controls: LinearLayout
     private var wide = false
+    private var safeWidth = 0
+    private var safeHeight = 0
+    private lateinit var playbackPanel: LinearLayout
+    private var progressText: TextView? = null
+    private var analysisElapsed = 0f
+    private var engineChoice: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("coach", MODE_PRIVATE)
         kind = intent.getStringExtra(K_KIND) ?: "chess"
+        engineChoice = prefs.getString("engine_$kind", null)
         aiDepth = prefs.getInt("aiDepth", 3).coerceIn(2, 4)
         confirmOn = prefs.getBoolean("confirmOn", true)
         val reviewId = intent.getStringExtra(K_REVIEW)
@@ -158,9 +165,17 @@ class GameActivity : ImmersiveActivity() {
     override fun onResume() {
         super.onResume()
         if (loadFailed || !::session.isInitialized) return
+        val choice = prefs.getString("engine_$kind", null)
+        if (choice != engineChoice) {
+            cancelWork()
+            clearPreview()
+            engineChoice = choice
+            feedback = getString(R.string.engine_selection_changed)
+        }
         tts?.shutdown()
         tts = TtsManager(this) { message ->
-            if (!isFinishing && !isDestroyed && message !in listOf(getString(R.string.tts_ready), getString(R.string.tts_speaking), getString(R.string.tts_initializing)))
+            if (!isFinishing && !isDestroyed && message !in listOf(getString(R.string.tts_ready), getString(R.string.tts_speaking), getString(R.string.tts_initializing),
+                    getString(R.string.edge_ready), getString(R.string.edge_loading)))
                 android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
         }
         render()
@@ -196,7 +211,7 @@ class GameActivity : ImmersiveActivity() {
             minWidth = 0
             minimumWidth = 0
             minimumHeight = dp(48)
-            cornerRadius = dp(24)
+            cornerRadius = dp(if (primary) 24 else 12)
             strokeWidth = dp(1)
             strokeColor = ColorStateList.valueOf(color(R.color.coach_outline))
             backgroundTintList = ColorStateList.valueOf(color(if (primary) R.color.coach_accent else R.color.coach_surface))
@@ -208,12 +223,12 @@ class GameActivity : ImmersiveActivity() {
         }
 
     private fun buildUi() {
-        val widthDp = resources.configuration.screenWidthDp
-        val heightDp = resources.configuration.screenHeightDp
-        wide = widthDp >= 600 && widthDp > heightDp
-        val panelWidth = (widthDp * 0.30f).toInt().coerceIn(220, 280)
+        val widthDp = safeWidth.takeIf { it > 0 } ?: resources.configuration.screenWidthDp
+        val heightDp = safeHeight.takeIf { it > 0 } ?: resources.configuration.screenHeightDp
+        wide = widthDp > heightDp
+        val panelWidth = minOf((widthDp * 0.32f).toInt().coerceIn(240, 300), (widthDp * 0.48f).toInt())
         showSidebar = wide && resources.configuration.fontScale < 1.4f &&
-            widthDp - panelWidth - 140 >= (heightDp - 40) * (if (kind == "xiangqi") 0.9f else 1f)
+            widthDp - panelWidth - 168 >= (heightDp - 40) * (if (kind == "xiangqi") 0.9f else 1f)
         val root = LinearLayout(this).apply {
             orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             setBackgroundColor(color(R.color.coach_surface))
@@ -233,7 +248,7 @@ class GameActivity : ImmersiveActivity() {
             val recordScroll = ScrollView(this).apply { addView(infoBody) }
             left.addView(recordScroll, LinearLayout.LayoutParams(-1, 0, 1f))
             left.addView(controls)
-            root.addView(left, LinearLayout.LayoutParams(dp(140), -1))
+            root.addView(left, LinearLayout.LayoutParams(dp(168), -1))
         } else if (!wide) {
             val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
             header.addView(button(getString(R.string.back)) { finish() }, LinearLayout.LayoutParams(-2, -2))
@@ -245,7 +260,7 @@ class GameActivity : ImmersiveActivity() {
         val center = column().apply { setBackgroundColor(color(R.color.paper)) }
         badge = text("", 12f, true).apply {
             gravity = Gravity.CENTER
-            setTextColor(color(R.color.coach_purple))
+            setTextColor(color(R.color.coach_muted))
             setPadding(dp(8), dp(6), dp(8), dp(6))
         }
         if (wide && !showSidebar) {
@@ -255,7 +270,10 @@ class GameActivity : ImmersiveActivity() {
             compact.addView(information, LinearLayout.LayoutParams(0, -2, 1f))
             center.addView(compact)
         }
-        center.addView(badge, LinearLayout.LayoutParams(-1, -2))
+        val boardTools = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        boardTools.addView(badge, LinearLayout.LayoutParams(0, -2, 1f))
+        boardTools.addView(button(getString(R.string.reset_board)) { board.resetViewport() })
+        center.addView(boardTools, LinearLayout.LayoutParams(-1, -2))
         board = BoardView(this).apply {
             adapter = kit.adapter()
             onTap = { onBoardTap(it) }
@@ -263,8 +281,15 @@ class GameActivity : ImmersiveActivity() {
         }
         center.addView(board, LinearLayout.LayoutParams(-1, 0, 1f))
         if (wide) root.addView(center, LinearLayout.LayoutParams(0, -1, 1f))
-        else root.addView(center, LinearLayout.LayoutParams(-1, 0, 1.25f))
+        else {
+            val ratio = if (kind == "xiangqi") 10f / 9f else 1f
+            val reserved = (160 * resources.configuration.fontScale).toInt()
+            val boardHeight = minOf((widthDp * ratio + 52).toInt(), ((heightDp - reserved).coerceAtLeast(0) * 0.80f).toInt())
+            root.addView(center, LinearLayout.LayoutParams(-1, dp(boardHeight)))
+        }
         val right = column().apply { setPadding(dp(12), dp(8), dp(12), dp(8)) }
+        playbackPanel = column()
+        right.addView(playbackPanel)
         analysisPanel = column()
         val scroll = ScrollView(this).apply { isFillViewport = true; addView(analysisPanel) }
         right.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -273,6 +298,18 @@ class GameActivity : ImmersiveActivity() {
         if (wide) root.addView(right, LinearLayout.LayoutParams(dp(panelWidth), -1))
         else root.addView(right, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
+        root.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val density = resources.displayMetrics.density
+            val w = ((view.width - view.paddingLeft - view.paddingRight) / density).toInt()
+            val h = ((view.height - view.paddingTop - view.paddingBottom) / density).toInt()
+            if (w > 0 && h > 0 && (abs(w - safeWidth) > 2 || abs(h - safeHeight) > 2)) {
+                safeWidth = w
+                safeHeight = h
+                root.post {
+                    if (!isFinishing && !isDestroyed && root.isAttachedToWindow) { buildUi(); render() }
+                }
+            }
+        }
         androidx.core.view.ViewCompat.requestApplyInsets(root)
     }
 
@@ -329,7 +366,11 @@ class GameActivity : ImmersiveActivity() {
             mode == CoachSession.Mode.REVIEW -> getString(R.string.review_badge)
             else -> getString(R.string.live_badge)
         }
+        badge.setTextColor(color(if (preview != null || pending != null) R.color.coach_purple else R.color.coach_muted))
+        badge.setBackgroundColor(color(if (preview != null || pending != null) R.color.coach_purple_surface else R.color.paper))
         analysisPanel.removeAllViews()
+        playbackPanel.removeAllViews()
+        progressText = null
         actions.removeAllViews()
         replyCards.clear()
         previousLineButton = null
@@ -345,7 +386,8 @@ class GameActivity : ImmersiveActivity() {
             }
             busy -> {
                 analysisPanel.addView(text(getString(busyMessage), 18f, true))
-                analysisPanel.addView(text(getString(R.string.analysis_wait), 13f))
+                progressText = text(getString(R.string.analysis_wait), 14f)
+                analysisPanel.addView(progressText)
                 addAction(getString(R.string.cancel_analysis)) {
                     cancelWork()
                     clearPreview()
@@ -366,10 +408,7 @@ class GameActivity : ImmersiveActivity() {
                     analysisPanel.addView(text(records.text.toString(), 12f))
                 }
                 analysisPanel.addView(button(getString(R.string.compare_candidates)) { showCandidates() })
-                val tools = LinearLayout(this)
-                tools.addView(button(getString(R.string.engine_settings)) { startActivity(Intent(this, SettingsActivity::class.java)) }, LinearLayout.LayoutParams(0, -2, 1f))
-                tools.addView(button(getString(R.string.reset_board)) { board.resetViewport() }, LinearLayout.LayoutParams(0, -2, 1f))
-                analysisPanel.addView(tools)
+                analysisPanel.addView(button(getString(R.string.engine_settings)) { startActivity(Intent(this, SettingsActivity::class.java)) })
                 if (lastExplanation.isNotEmpty()) analysisPanel.addView(button(getString(R.string.read_explanation)) { speak(lastExplanation, true) })
                 if (!showSidebar) {
                     val row = LinearLayout(this)
@@ -395,11 +434,8 @@ class GameActivity : ImmersiveActivity() {
             setTextColor(color(if (p.loss <= 80) R.color.coach_positive else R.color.coach_warning))
         })
         p.analysis.engine?.let { analysisPanel.addView(text(it, 13f, true)) }
-        analysisPanel.addView(text(if (p.analysis.scoreUnit == "points") getString(R.string.engine_visits, p.analysis.nodes)
-            else getString(R.string.analysis_depth, p.analysis.completedDepth, p.analysis.requestedDepth), 12f))
-        if (p.analysis.limited || p.repliesLimited) analysisPanel.addView(text(getString(R.string.analysis_limited), 12f))
-        analysisPanel.addView(text(getString(if (kind == "go") R.string.go_engine_unit else R.string.chess_score_unit), 12f))
-        if (p.analysis.heuristic) analysisPanel.addView(text(getString(R.string.heuristic_notice), 12f))
+        analysisPanel.addView(text(getString(R.string.analysis_elapsed, analysisElapsed), 13f))
+        if (p.analysis.limited || p.repliesLimited) analysisPanel.addView(text(getString(R.string.analysis_limited), 13f))
         analysisPanel.addView(text(getString(R.string.opponent_replies), 17f, true).apply { setPadding(0, dp(12), 0, dp(6)) })
         if (kind != "go") analysisPanel.addView(text(getString(R.string.reply_depth, p.replyDepth), 12f))
         if (p.replies.isEmpty()) analysisPanel.addView(text(getString(R.string.no_reply), 13f))
@@ -411,6 +447,10 @@ class GameActivity : ImmersiveActivity() {
                     setColor(color(if (index == branch) R.color.coach_selected else R.color.coach_surface))
                     setStroke(dp(if (index == branch) 2 else 1), color(if (index == branch) R.color.coach_accent else R.color.coach_outline))
                 }
+                isFocusable = true
+                isSelected = index == branch
+                androidx.core.view.ViewCompat.setStateDescription(this, if (index == branch) getString(R.string.branch_selected) else null)
+                contentDescription = getString(R.string.branch_number, index + 1)
                 setOnClickListener { branch = index; lineStep = reply.moves.size; updateLineSelection() }
             }
             val value = when {
@@ -421,7 +461,7 @@ class GameActivity : ImmersiveActivity() {
             card.addView(text(getString(R.string.reply_engine_heading, index + 1, value), 13f, true))
             card.addView(text(reply.notations.mapIndexed { i, notation ->
                 getString(R.string.reply_step, i + 1, sideLabel((session.sideToMove() + 1 + i) % 2), notation)
-            }.joinToString("   "), 13f))
+            }.joinToString("\n"), 14f))
             replyCards.add(card)
             analysisPanel.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         }
@@ -430,20 +470,34 @@ class GameActivity : ImmersiveActivity() {
             val total = p.replies[branch].moves.size
             lineStep = lineStep.coerceIn(0, total)
             val playback = LinearLayout(this)
-            previousLineButton = button(getString(R.string.previous_step), enabled = lineStep > 0) { lineStep--; updateLineSelection() }
-            nextLineButton = button(getString(R.string.next_step), enabled = lineStep < total) { lineStep++; updateLineSelection() }
-            lineCounter = text("$lineStep / $total", 12f).apply { gravity = Gravity.CENTER }
-            playback.addView(previousLineButton, LinearLayout.LayoutParams(0, -2, 1f))
-            playback.addView(lineCounter, LinearLayout.LayoutParams(-2, -1))
-            playback.addView(nextLineButton, LinearLayout.LayoutParams(0, -2, 1f))
-            analysisPanel.addView(playback)
+            previousLineButton = button(getString(R.string.previous_symbol), enabled = lineStep > 0) { lineStep--; updateLineSelection() }
+                .apply { contentDescription = getString(R.string.previous_step) }
+            nextLineButton = button(getString(R.string.next_symbol), enabled = lineStep < total) { lineStep++; updateLineSelection() }
+                .apply { contentDescription = getString(R.string.next_step) }
+            lineCounter = text(getString(R.string.line_progress, branch + 1, lineStep, total), 13f).apply { gravity = Gravity.CENTER }
+            playback.gravity = Gravity.CENTER_VERTICAL
+            playback.addView(previousLineButton, LinearLayout.LayoutParams(dp(48), -2))
+            playback.addView(lineCounter, LinearLayout.LayoutParams(0, -2, 1f))
+            playback.addView(nextLineButton, LinearLayout.LayoutParams(dp(48), -2))
+            playbackPanel.addView(playback)
         }
         analysisPanel.addView(button(getString(R.string.local_explanation)) {
             val message = Explainer.explain(this, p)
             AlertDialog.Builder(this).setTitle(R.string.local_explanation).setMessage(message)
                 .setPositiveButton(R.string.read_aloud) { _, _ -> speak(message, true) }.setNegativeButton(R.string.close, null).show()
         })
-        analysisPanel.addView(text(getString(R.string.local_only_notice), 11f))
+        analysisPanel.addView(text(getString(R.string.preview_tap_help), 13f))
+        val details = column().apply {
+            visibility = android.view.View.GONE
+            addView(text(if (p.analysis.scoreUnit == "points") getString(R.string.engine_visits, p.analysis.nodes)
+                else getString(R.string.analysis_depth, p.analysis.completedDepth, p.analysis.requestedDepth), 13f))
+            addView(text(getString(if (kind == "go") R.string.go_engine_unit else R.string.chess_score_unit), 13f))
+            addView(text(getString(R.string.local_only_notice), 13f))
+        }
+        analysisPanel.addView(button(getString(R.string.analysis_details)) {
+            details.visibility = if (details.visibility == android.view.View.VISIBLE) android.view.View.GONE else android.view.View.VISIBLE
+        })
+        analysisPanel.addView(details)
         addAction(getString(R.string.change_move)) { clearPreview(); render() }
         addAction(getString(R.string.confirm_move), true) { commitPending() }
     }
@@ -453,12 +507,14 @@ class GameActivity : ImmersiveActivity() {
         val total = p.replies.getOrNull(branch)?.moves?.size ?: 0
         lineStep = lineStep.coerceIn(0, total)
         for ((index, card) in replyCards.withIndex()) {
+            card.isSelected = index == branch
+            androidx.core.view.ViewCompat.setStateDescription(card, if (index == branch) getString(R.string.branch_selected) else null)
             (card.background as GradientDrawable).apply {
                 setColor(color(if (index == branch) R.color.coach_selected else R.color.coach_surface))
                 setStroke(dp(if (index == branch) 2 else 1), color(if (index == branch) R.color.coach_accent else R.color.coach_outline))
             }
         }
-        lineCounter?.text = "$lineStep / $total"
+        lineCounter?.text = getString(R.string.line_progress, branch + 1, lineStep, total)
         previousLineButton?.apply { isEnabled = lineStep > 0; alpha = if (isEnabled) 1f else 0.4f }
         nextLineButton?.apply { isEnabled = lineStep < total; alpha = if (isEnabled) 1f else 0.4f }
         refreshBoard()
@@ -469,9 +525,10 @@ class GameActivity : ImmersiveActivity() {
         val p = preview
         val line = p?.replies?.getOrNull(branch)?.moves.orEmpty().take(lineStep)
         if (p != null && session.accepts(p)) pos = session.previewPosition(p, branch, lineStep)
+        else pending?.let { pos = engine.applyMove(engine.copyPosition(pos), it).position }
         kit.setBoardPos(board, pos)
         board.lastMove = if (p == null) session.lastEntry()?.move else null
-        board.pendingMove = p?.move
+        board.pendingMove = p?.move ?: pending
         board.variationMoves = line
         board.variationStartSide = (session.sideToMove() + 1) % 2
         board.numberVariation = kind == "go"
@@ -525,22 +582,33 @@ class GameActivity : ImmersiveActivity() {
         busy = false
     }
 
-    private fun <T> work(message: Int, calculate: (()->Unit) -> T, complete: (T) -> Unit) {
+    private fun <T> work(message: Int,
+                         calculate: (() -> Unit, (com.sanqi.coach.coach.PositionAnalysis) -> Unit) -> T,
+                         complete: (T) -> Unit) {
         if (busy) return
         busy = true
         busyMessage = message
         val token = ++request
         val revision = session.revision
+        val started = System.nanoTime()
         render()
         job = scope.launch {
             try {
                 val value = withContext(Dispatchers.Default) {
                     val context = currentCoroutineContext()
-                    calculate { context.ensureActive() }
+                    calculate({ context.ensureActive() }) { update ->
+                        runOnUiThread {
+                            if (token == request && revision == session.revision && busy && !isDestroyed && !isFinishing) {
+                                progressText?.text = getString(R.string.analysis_live, update.completedDepth, update.nodes,
+                                    (System.nanoTime() - started) / 1_000_000_000.0)
+                            }
+                        }
+                    }
                 }
                 if (token != request || revision != session.revision || isFinishing || isDestroyed) return@launch
                 busy = false
                 job = null
+                analysisElapsed = (System.nanoTime() - started) / 1_000_000_000f
                 complete(value)
             } catch (_: CancellationException) {
                 if (token == request) { busy = false; job = null }
@@ -574,7 +642,7 @@ class GameActivity : ImmersiveActivity() {
         }
         pending = move
         if (resetPlayback) { branch = 0; lineStep = 0 }
-        work(R.string.analyzing, { check -> session.analyze(aiDepth, move, check) }) { p ->
+        work(R.string.analyzing, { check, progress -> session.analyze(aiDepth, move, check, progress) }) { p ->
             preview = p
             branch = branch.coerceIn(0, maxOf(0, p.replies.lastIndex))
             lineStep = lineStep.coerceIn(0, p.replies.getOrNull(branch)?.moves?.size ?: 0)
@@ -604,10 +672,7 @@ class GameActivity : ImmersiveActivity() {
 
     private fun aiTurn() {
         if (busy || gameDone || scoring()) return
-        work(R.string.opponent_thinking, { check ->
-            val choice = session.candidates(aiDepth, check).candidates.firstOrNull()?.move
-            choice?.let { session.analyze(aiDepth, it, check) }
-        }) { p ->
+        work(R.string.opponent_thinking, { check, progress -> session.analyzeBest(aiDepth, check, progress) }) { p ->
             if (p != null && session.accepts(p)) {
                 val explanation = Explainer.explain(this, p)
                 session.commit(p.move, p, explanation)
@@ -623,7 +688,7 @@ class GameActivity : ImmersiveActivity() {
     }
 
     private fun showCandidates() {
-        work(R.string.analyzing, { check -> session.candidates(aiDepth, check) }) { analysis ->
+        work(R.string.analyzing, { check, progress -> session.candidates(aiDepth, check, progress) }) { analysis ->
             render()
             val candidates = analysis.candidates.take(3)
             val labels = candidates.map {

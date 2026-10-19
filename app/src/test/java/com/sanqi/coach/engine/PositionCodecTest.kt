@@ -29,6 +29,15 @@ class PositionCodecTest {
         assertEquals(Move(1, 20), PositionCodec.parseUci("b0c2", "xiangqi"))
         assertEquals(Move(85, 76), PositionCodec.parseUci("e9e8", "xiangqi"))
     }
+    @Test fun fairyXiangqiUsesOneBasedVariableLengthRanks() {
+        assertEquals("b1c3", PositionCodec.uci(Move(1, 20), "xiangqi", true))
+        assertEquals("e10e9", PositionCodec.uci(Move(85, 76), "xiangqi", true))
+        for (from in 0 until 90) for (to in 0 until 90) {
+            val move = Move(from, to)
+            assertEquals(move, PositionCodec.parseUci(PositionCodec.uci(move, "xiangqi", true), "xiangqi", true))
+        }
+    }
+    @Test(expected = EngineException::class) fun fairyRejectsZeroBasedRank() { PositionCodec.parseUci("b0c2", "xiangqi", true) }
     @Test fun goCoordinatesSkipIAndPreservePass() {
         for (size in listOf(9, 13, 19)) for (index in 0 until size * size) {
             val move = Move(index, index)

@@ -12,8 +12,8 @@ android {
         applicationId = "com.sanqi.coach"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -45,7 +45,7 @@ val verifyProfessionalEngines by tasks.registering {
     doLast {
         val root = layout.buildDirectory.get().asFile
         val required = listOf("generated/engineAssets/engines/catalog.json") +
-            listOf("stockfish", "pikafish", "katago").map { "generated/engineLibs/arm64-v8a/lib$it.so" }
+            listOf("stockfish", "pikafish", "katago", "fairystockfish").map { "generated/engineLibs/arm64-v8a/lib$it.so" }
         required.forEach { check(root.resolve(it).isFile) { "Missing $it; run scripts/build_android_engines.sh in the Android CI environment first" } }
     }
 }
@@ -56,6 +56,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
 }

@@ -14,5 +14,6 @@ data class PositionAnalysis(
     val heuristic: Boolean,
     val engine: String? = null,
     val scoreUnit: String = "cp",
-    val comparable: Boolean = true
+    val comparable: Boolean = true,
+    val searchMillis: Long = 0
 )

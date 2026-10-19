@@ -78,19 +78,33 @@ class CoachSession<P : Any>(
     fun isMoveLegal(move: Move): Boolean = engine.legalMoves(current).contains(move)
     fun accepts(preview: Preview): Boolean = preview.revision == revision && gameOverText == null && isMoveLegal(preview.move)
 
-    fun analyze(depth: Int, move: Move, cancelled: () -> Unit = {}): Preview {
+    fun analyze(depth: Int, move: Move, cancelled: () -> Unit = {}, onProgress: (PositionAnalysis) -> Unit = {}): Preview =
+        previewAnalysis(depth, move, cancelled, onProgress, null)
+
+    fun analyzeBest(depth: Int, cancelled: () -> Unit = {}, onProgress: (PositionAnalysis) -> Unit = {}): Preview? {
+        val baseline = analyzePosition(engine.copyPosition(current), entries.map { it.move }, depth, null, cancelled,
+            com.sanqi.coach.engine.analysisMillis(depth) / 2, onProgress)
+        val move = baseline.candidates.firstOrNull()?.move ?: return null
+        return previewAnalysis(depth, move, cancelled, onProgress, baseline)
+    }
+
+    private fun previewAnalysis(depth: Int, move: Move, cancelled: () -> Unit,
+                                onProgress: (PositionAnalysis) -> Unit, baseline: PositionAnalysis?): Preview {
         val sourceRevision = revision
         val source = engine.copyPosition(current)
         require(move in engine.legalMoves(source))
         val history = entries.map { it.move }
-        val analysis = analyzePosition(source, history, depth, move, cancelled)
+        val budget = com.sanqi.coach.engine.analysisMillis(depth)
+        val analysis = baseline ?: analyzePosition(source, history, depth, move, cancelled, budget / 2, onProgress)
         val chosen = analysis.candidates.first { it.move == move }
         val applied = engine.applyMove(source, move)
         val loss = (analysis.score - chosen.score).coerceAtLeast(0)
         val best = analysis.candidates.firstOrNull()?.move
         val bestNotation = if (best != null && best != move) engine.applyMove(source, best).notation else null
         val ended = applied.status in listOf(GameStatus.CHECKMATE, GameStatus.STALEMATE, GameStatus.DRAW)
-        val response = if (ended) null else analyzePosition(applied.position, history + move, depth, null, cancelled)
+        val remaining = (budget - analysis.searchMillis).coerceAtLeast(0).toInt()
+        val response = if (ended || remaining == 0) null else analyzePosition(applied.position, history + move, depth, null, cancelled,
+            remaining, onProgress)
         val replies = response?.candidates?.take(3)?.map { candidate ->
             var pos = engine.copyPosition(applied.position)
             val moves = candidate.moves.take(8)
@@ -106,15 +120,17 @@ class CoachSession<P : Any>(
         cancelled()
         return Preview(sourceRevision, move, applied.notation, applied.captured, applied.check,
             applied.status, loss, Grade.fromLoss(loss), bestNotation, replies, analysis,
-            response?.completedDepth ?: 0, response?.limited ?: false)
+            response?.completedDepth ?: 0, response?.limited ?: (!ended && remaining == 0))
     }
 
-    private fun analyzePosition(pos: P, moves: List<Move>, level: Int, forced: Move?, cancelled: () -> Unit): PositionAnalysis =
-        backend?.analyze(pos, moves, level, forced, cancelled)
+    private fun analyzePosition(pos: P, moves: List<Move>, level: Int, forced: Move?, cancelled: () -> Unit,
+                                millis: Int, onProgress: (PositionAnalysis) -> Unit): PositionAnalysis =
+        backend?.analyze(pos, moves, level, forced, cancelled, millis, onProgress)
             ?: PositionAnalyzer(engine).analyze(pos, level, forced, cancelled = cancelled)
 
-    fun candidates(depth: Int, cancelled: () -> Unit = {}): PositionAnalysis =
-        analyzePosition(engine.copyPosition(current), entries.map { it.move }, depth, null, cancelled)
+    fun candidates(depth: Int, cancelled: () -> Unit = {}, onProgress: (PositionAnalysis) -> Unit = {}): PositionAnalysis =
+        analyzePosition(engine.copyPosition(current), entries.map { it.move }, depth, null, cancelled,
+            com.sanqi.coach.engine.analysisMillis(depth) / 2, onProgress)
 
     fun previewPosition(preview: Preview, branch: Int, steps: Int): P {
         require(accepts(preview))

@@ -13,8 +13,8 @@ import com.sanqi.coach.core.xiangqi.XiangqiEngine
 import com.sanqi.coach.core.xiangqi.XiangqiPosition
 import kotlin.math.max
 
-private const val WOOD_GO = "#DCB35C"
-private const val WOOD_XQ = "#EAC98F"
+private const val WOOD_GO = "#E3BE83"
+private const val WOOD_XQ = "#E3BE83"
 
 class GoBoard(private val engine: GoEngine) : BoardAdapter {
 
@@ -76,12 +76,15 @@ class GoBoard(private val engine: GoEngine) : BoardAdapter {
         val p = pos ?: return
         val s = engine.stoneAt(p, idx)
         if (s == 0) return
-        stone.color = if (s == 1) Color.parseColor("#151515") else Color.parseColor("#FAFAFA")
-        canvas.drawCircle(cx, cy, cell * 0.45f, stone)
-        if (s == 2) {
-            ring.strokeWidth = cell * 0.04f
-            canvas.drawCircle(cx, cy, cell * 0.45f, ring)
-        }
+        stone.color = Color.parseColor("#553A291A")
+        canvas.drawCircle(cx, cy + cell * 0.035f, cell * 0.45f, stone)
+        stone.color = if (s == 1) Color.parseColor("#211F1D") else Color.parseColor("#FFFDF7")
+        canvas.drawCircle(cx, cy, cell * 0.44f, stone)
+        ring.color = if (s == 1) Color.parseColor("#11100F") else Color.parseColor("#A99B85")
+        ring.strokeWidth = cell * 0.025f
+        canvas.drawCircle(cx, cy, cell * 0.44f, ring)
+        stone.color = if (s == 1) Color.parseColor("#35FFFFFF") else Color.parseColor("#AFFFFFFF")
+        canvas.drawOval(cx - cell * 0.26f, cy - cell * 0.30f, cx + cell * 0.12f, cy - cell * 0.17f, stone)
     }
 }
 
@@ -154,13 +157,18 @@ class XiangqiBoard(private val engine: XiangqiEngine) : BoardAdapter {
         val code = engine.pieceAt(p, idx)
         if (code == 0) return
         val red = engine.isRed(code)
-        val main = if (red) Color.parseColor("#C62828") else Color.parseColor("#212121")
-        disc.color = Color.parseColor("#F5E7C8")
+        val main = if (red) Color.parseColor("#A33B32") else Color.parseColor("#29231D")
+        disc.color = Color.parseColor("#947045")
+        canvas.drawCircle(cx, cy + cell * 0.035f, cell * 0.455f, disc)
+        disc.color = Color.parseColor("#FFF0D1")
         canvas.drawCircle(cx, cy, cell * 0.44f, disc)
+        ring.color = Color.parseColor("#BB9262")
+        ring.strokeWidth = cell * 0.025f
+        canvas.drawCircle(cx, cy, cell * 0.43f, ring)
         ring.color = main
-        ring.strokeWidth = cell * 0.06f
-        canvas.drawCircle(cx, cy, cell * 0.44f, ring)
-        drawCharCentered(canvas, textPaint, engine.pieceLabel(code), cx, cy, cell * 0.48f, main)
+        ring.strokeWidth = cell * 0.02f
+        canvas.drawCircle(cx, cy, cell * 0.365f, ring)
+        drawCharCentered(canvas, textPaint, engine.pieceLabel(code), cx, cy, cell * 0.50f, main)
     }
 }
 

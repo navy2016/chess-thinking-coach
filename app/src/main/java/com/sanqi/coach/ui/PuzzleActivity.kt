@@ -68,7 +68,7 @@ class PuzzleActivity : ImmersiveActivity() {
         val hint = TextView(this)
         hint.text = "一步练：找到制胜的那一手。答错不影响局面，可以反复尝试。"
         hint.textSize = 13f
-        hint.setTextColor(Color.parseColor("#666666"))
+        hint.setTextColor(getColor(com.sanqi.coach.R.color.coach_muted))
         val hlp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         hlp.topMargin = px(8)
@@ -76,7 +76,7 @@ class PuzzleActivity : ImmersiveActivity() {
 
         for (p in all) {
             val card = MaterialCardView(this)
-            card.radius = px(16).toFloat()
+            card.radius = px(14).toFloat()
             card.cardElevation = 0f
             card.strokeWidth = px(1)
             card.strokeColor = getColor(com.sanqi.coach.R.color.coach_outline)
@@ -96,7 +96,7 @@ class PuzzleActivity : ImmersiveActivity() {
             val d = TextView(this)
             d.text = p.desc
             d.textSize = 13f
-            d.setTextColor(Color.parseColor("#666666"))
+            d.setTextColor(getColor(com.sanqi.coach.R.color.coach_muted))
             inner.addView(d)
             card.addView(inner, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
@@ -113,7 +113,7 @@ class PuzzleActivity : ImmersiveActivity() {
         val blp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         blp.topMargin = px(16)
-        listRoot!!.addView(back, blp)
+        listRoot!!.addView(back, 0, blp)
 
         scroll.fitsSystemWindows = true
         setContentView(scroll)

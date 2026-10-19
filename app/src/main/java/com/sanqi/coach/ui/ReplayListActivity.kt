@@ -61,7 +61,7 @@ class ReplayListActivity : ImmersiveActivity() {
             val empty = TextView(this)
             empty.text = "还没有对局记录。回到首页开一局，每一步都会被记录、评分，方便复盘。"
             empty.textSize = 15f
-            empty.setTextColor(Color.parseColor("#777777"))
+            empty.setTextColor(getColor(com.sanqi.coach.R.color.coach_muted))
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             lp.topMargin = px(20)
@@ -77,7 +77,7 @@ class ReplayListActivity : ImmersiveActivity() {
 
     private fun addItem(g: com.sanqi.coach.data.StoredGame) {
         val card = MaterialCardView(this)
-        card.radius = px(16).toFloat()
+        card.radius = px(14).toFloat()
         card.cardElevation = 0f
         card.strokeWidth = px(1)
         card.strokeColor = getColor(com.sanqi.coach.R.color.coach_outline)
@@ -97,8 +97,8 @@ class ReplayListActivity : ImmersiveActivity() {
         val sub = TextView(this)
         val fmt = SimpleDateFormat("MM-dd HH:mm", Locale.US)
         sub.text = fmt.format(Date(g.updatedAt)) + " · 点击复盘" + " · 长按删除"
-        sub.textSize = 12f
-        sub.setTextColor(Color.parseColor("#888888"))
+        sub.textSize = 13f
+        sub.setTextColor(getColor(com.sanqi.coach.R.color.coach_muted))
         inner.addView(sub)
 
         card.addView(inner, FrameLayout.LayoutParams(

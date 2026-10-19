@@ -69,8 +69,12 @@ object ChessPiecePainter {
         canvas.drawPath(base, paint)
         paint.color = if (white) edge else Color.parseColor("#C5AF92")
         paint.strokeWidth = 2.2f
+        canvas.drawLine(31f, 82f, 69f, 82f, paint)
+        if (piece == 1 || piece == 2) canvas.drawLine(36f, 65f, 64f, 65f, paint)
+        if (piece == 3) canvas.drawLine(36f, 42f, 64f, 42f, paint)
         if (piece == 4) canvas.drawLine(56f, 24f, 45f, 40f, paint)
         if (piece == 5) {
+            canvas.drawLine(60f, 30f, 65f, 52f, paint)
             paint.style = Paint.Style.FILL
             canvas.drawCircle(42f, 28f, 2.3f, paint)
         }

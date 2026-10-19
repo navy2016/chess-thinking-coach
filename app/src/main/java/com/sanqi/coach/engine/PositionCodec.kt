@@ -5,17 +5,23 @@ import com.sanqi.coach.core.chess.ChessPosition
 import com.sanqi.coach.core.xiangqi.XiangqiPosition
 
 object PositionCodec {
-    fun uci(move: Move, kind: String): String {
+    fun uci(move: Move, kind: String, oneBasedXiangqi: Boolean = false): String {
         val width = if (kind == "xiangqi") 9 else 8
-        val base = if (kind == "xiangqi") 0 else 1
+        val base = if (kind == "xiangqi" && !oneBasedXiangqi) 0 else 1
         fun square(index: Int): String = "${'a' + index % width}${index / width + base}"
         val promotion = if (kind == "chess") when (move.promo) { 2 -> "q"; 3 -> "r"; 4 -> "b"; 5 -> "n"; else -> "" } else ""
         return square(move.from) + square(move.to) + promotion
     }
 
-    fun parseUci(value: String, kind: String): Move {
+    fun parseUci(value: String, kind: String, oneBasedXiangqi: Boolean = false): Move {
+        if (kind == "xiangqi" && oneBasedXiangqi) {
+            val match = Regex("([a-i])(10|[1-9])([a-i])(10|[1-9])").matchEntire(value)
+                ?: throw EngineException(EngineProblem.PROTOCOL)
+            fun square(file: Int, rank: Int) = (match.groupValues[rank].toInt() - 1) * 9 + (match.groupValues[file][0] - 'a')
+            return Move(square(1, 2), square(3, 4))
+        }
         val width = if (kind == "xiangqi") 9 else 8
-        val base = if (kind == "xiangqi") 0 else 1
+        val base = if (kind == "xiangqi" && !oneBasedXiangqi) 0 else 1
         if (value.length !in 4..5) throw EngineException(EngineProblem.PROTOCOL)
         fun square(offset: Int): Int {
             val x = value[offset] - 'a'

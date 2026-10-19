@@ -34,12 +34,16 @@ class HomeActivity : ImmersiveActivity() {
         val scroll = ScrollView(this)
         root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setPadding(px(20), px(24), px(20), px(20))
+        root.setPadding(px(16), px(24), px(16), px(20))
         scroll.addView(root)
 
+        root.addView(android.widget.ImageView(this).apply {
+            setImageResource(com.sanqi.coach.R.drawable.ic_launcher)
+            importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(px(64), px(64)).apply { bottomMargin = px(16) })
         val title = TextView(this)
-        title.text = "三棋思考教练"
-        title.textSize = 30f
+        title.setText(com.sanqi.coach.R.string.app_name)
+        title.textSize = 28f
         title.setTypeface(Typeface.DEFAULT_BOLD)
         title.setTextColor(getColor(com.sanqi.coach.R.color.coach_accent))
         root.addView(title)
@@ -47,7 +51,7 @@ class HomeActivity : ImmersiveActivity() {
         val sub = TextView(this)
         sub.text = "落子前替你想一步，落子后讲给你听"
         sub.textSize = 14f
-        sub.setTextColor(Color.parseColor("#555555"))
+        sub.setTextColor(getColor(com.sanqi.coach.R.color.coach_muted))
         val subLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         subLp.topMargin = px(8)
@@ -92,12 +96,13 @@ class HomeActivity : ImmersiveActivity() {
 
     private fun addCard(label: String, desc: String, onClick: () -> Unit) {
         val card = MaterialCardView(this)
-        card.radius = px(16).toFloat()
+        card.radius = px(14).toFloat()
         card.cardElevation = 0f
         card.strokeWidth = px(1)
         card.strokeColor = getColor(com.sanqi.coach.R.color.coach_outline)
         card.setCardBackgroundColor(getColor(com.sanqi.coach.R.color.coach_surface))
         card.useCompatPadding = true
+        card.isFocusable = true
         card.setOnClickListener { onClick() }
         val inner = LinearLayout(this)
         inner.orientation = LinearLayout.VERTICAL
@@ -111,7 +116,7 @@ class HomeActivity : ImmersiveActivity() {
         val d = TextView(this)
         d.text = desc
         d.textSize = 13f
-        d.setTextColor(Color.parseColor("#666666"))
+        d.setTextColor(getColor(com.sanqi.coach.R.color.coach_muted))
         val dlp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         dlp.topMargin = px(6)

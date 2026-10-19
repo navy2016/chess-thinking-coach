@@ -1,0 +1,10 @@
+Edge speech protocol integration
+
+EdgeGec.kt is a Kotlin port of drm.py from edge-tts 7.3.1, commit 360fa8e1de354e1dda74c09bd695887d6a44df74.
+Copyright (c) rany <rany@riseup.net> and edge-tts contributors.
+License: LGPLv3, see edge-tts-LICENSE.txt.
+Modifications: Kotlin/JVM implementation, standard round loop instead of unrolled Python rounds, no clock correction or retry after service denial.
+Original source: https://github.com/rany2/edge-tts/tree/360fa8e1de354e1dda74c09bd695887d6a44df74
+Modified source and build instructions: https://github.com/navy2016/chess-thinking-coach
+Corresponding Kotlin source is included with this release's source archive.
+This is an unofficial experimental client, not a Microsoft-supported public API. The source license does not grant rights to Microsoft's cloud service.

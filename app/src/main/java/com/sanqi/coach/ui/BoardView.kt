@@ -70,9 +70,13 @@ class BoardView @JvmOverloads constructor(
     private var lastTouchY = 0f
     private val scaleDetector = android.view.ScaleGestureDetector(context, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+            val previous = zoom
             zoom = (zoom * detector.scaleFactor).coerceIn(1f, 3f)
-            panX = panX.coerceIn(-width * (zoom - 1f) / 2f, width * (zoom - 1f) / 2f)
-            panY = panY.coerceIn(-height * (zoom - 1f) / 2f, height * (zoom - 1f) / 2f)
+            val ratio = zoom / previous
+            panX = (detector.focusX - width / 2f - (detector.focusX - width / 2f - panX) * ratio)
+                .coerceIn(-width * (zoom - 1f) / 2f, width * (zoom - 1f) / 2f)
+            panY = (detector.focusY - height / 2f - (detector.focusY - height / 2f - panY) * ratio)
+                .coerceIn(-height * (zoom - 1f) / 2f, height * (zoom - 1f) / 2f)
             tapCancelled = true
             invalidate()
             return true
@@ -141,7 +145,8 @@ class BoardView @JvmOverloads constructor(
         canvas.scale(zoom, zoom, width / 2f, height / 2f)
         val cols = a.columns()
         val rows = a.rows()
-        val padding = if (showCoords) 1.6f else 0.7f
+        val coordinates = showCoords && ((0 until cols).any { a.colLabel(it) != null } || (0 until rows).any { a.rowLabel(it) != null })
+        val padding = if (coordinates) 1.6f else 0.7f
         cell = min(width / (cols + padding), height / (rows + padding))
         val bw = cols * cell
         val bh = rows * cell
@@ -149,12 +154,21 @@ class BoardView @JvmOverloads constructor(
         originX = rect.left + cell / 2f
         originY = rect.top + cell / 2f
         a.drawBoard(canvas, rect, cell, originX, originY, showCoords)
+        if (selectFrom >= 0) ring(canvas, selectFrom, cell * 0.49f, "#805C3B", cell * 0.065f)
+        for (target in targetHighlights) {
+            val c = centerOf(target)
+            if (a.pieceSide(target) != null) ring(canvas, target, cell * 0.49f, "#805C3B", cell * 0.065f)
+            else {
+                dotPaint.color = Color.parseColor("#99805C3B")
+                canvas.drawCircle(c[0], c[1], cell * 0.12f, dotPaint)
+            }
+        }
         for (i in 0 until cols * rows) {
             val c = centerOf(i)
             a.drawPiece(canvas, cell, i, c[0], c[1])
         }
         drawOverlays(canvas)
-        if (showCoords) drawLabels(canvas, a)
+        if (coordinates) drawLabels(canvas, a)
         canvas.restore()
     }
 
@@ -162,13 +176,8 @@ class BoardView @JvmOverloads constructor(
         val a = adapter ?: return
         val r = if (a.intersections()) cell * 0.46f else cell * 0.42f
         lastMove?.let { m ->
-            if (m.from >= 0) ring(canvas, m.from, r, "#C62828", cell * 0.06f)
-            ring(canvas, m.to, r, "#C62828", cell * 0.06f)
-        }
-        if (selectFrom >= 0) ring(canvas, selectFrom, r, "#1976D2", cell * 0.08f)
-        for (t in targetHighlights) {
-            val c = centerOf(t)
-            canvas.drawCircle(c[0], c[1], cell * 0.13f, dotPaint)
+            if (m.from >= 0 && m.from != m.to) ring(canvas, m.from, r, "#A87937", cell * 0.04f)
+            ring(canvas, m.to, r, "#A87937", cell * 0.05f)
         }
         pendingMove?.let { m ->
             ring(canvas, m.to, cell * 0.50f, "#803FE2", cell * 0.075f)
@@ -208,11 +217,13 @@ class BoardView @JvmOverloads constructor(
         val a = centerOf(from)
         val b = centerOf(to)
         val angle = atan2(b[1] - a[1], b[0] - a[0])
-        val endX = b[0] - cos(angle) * cell * 0.23f
-        val endY = b[1] - sin(angle) * cell * 0.23f
+        val startX = a[0] + cos(angle) * cell * 0.46f
+        val startY = a[1] + sin(angle) * cell * 0.46f
+        val endX = b[0] - cos(angle) * cell * 0.46f
+        val endY = b[1] - sin(angle) * cell * 0.46f
         markPaint.color = Color.argb(alpha, 128, 63, 226)
         markPaint.strokeWidth = cell * 0.065f
-        canvas.drawLine(a[0], a[1], endX, endY, markPaint)
+        canvas.drawLine(startX, startY, endX, endY, markPaint)
         for (offset in floatArrayOf(-0.55f, 0.55f)) {
             canvas.drawLine(endX, endY, endX - cos(angle + offset) * cell * 0.22f,
                 endY - sin(angle + offset) * cell * 0.22f, markPaint)
@@ -228,7 +239,7 @@ class BoardView @JvmOverloads constructor(
     }
 
     private fun drawLabels(canvas: Canvas, a: BoardAdapter) {
-        labelPaint.textSize = cell * 0.34f
+        labelPaint.textSize = cell * (0.30f * resources.configuration.fontScale).coerceIn(0.30f, 0.40f)
         for (i in 0 until a.columns()) {
             val l = a.colLabel(i) ?: continue
             val cx = if (a.intersections()) originX + i * cell else rect.left + i * cell + cell / 2f

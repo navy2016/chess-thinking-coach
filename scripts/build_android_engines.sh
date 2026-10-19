@@ -35,6 +35,9 @@ make -C "$SOURCES/pikafish/src" -j2 all ARCH=armv8 COMP=ndk COMPCXX="$CXX" \
     EXTRACXXFLAGS="-fPIE" EXTRALDFLAGS="$LINK_FLAGS"
 cp "$SOURCES/stockfish/src/stockfish" "$OUT/libstockfish.so"
 cp "$SOURCES/pikafish/src/pikafish" "$OUT/libpikafish.so"
+make -C "$SOURCES/fairystockfish/src" -j2 all ARCH=armv8 COMP=ndk COMPCXX="$CXX" \
+    largeboards=yes all=no nnue=no EXTRACXXFLAGS="-fPIE" EXTRALDFLAGS="$LINK_FLAGS"
+cp "$SOURCES/fairystockfish/src/stockfish" "$OUT/libfairystockfish.so"
 "$CMAKE" -S "$SOURCES/katago/cpp" -B app/build/engines/katago-build \
     -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_static \

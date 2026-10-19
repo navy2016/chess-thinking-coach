@@ -22,11 +22,17 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
     private var closed = false
     private var generation = 0L
     private var serial = 0L
-    private var pending: Request? = null
+    private val pending = mutableListOf<Request>()
     private val queued = mutableSetOf<String>()
     private data class Request(val text: String, val rate: Float, val interrupt: Boolean)
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) stop()
+    }
+
+    private val online = app.getSharedPreferences("coach", Context.MODE_PRIVATE).let { prefs ->
+        if (prefs.getBoolean("edgeTts", false) && prefs.getBoolean("edgeConsent", false))
+            OnlineSpeech(app, onStatus) { text, rate, interrupt -> speakSystem(text, rate, interrupt) }
+        else null
     }
 
     init {
@@ -42,14 +48,14 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
     private fun report(resource: Int, code: Int? = null) {
         val message = if (code == null) app.getString(resource) else app.getString(resource, code)
         Log.i("CoachTts", "state=$resource code=$code")
-        onStatus(message)
+        if (online == null || online.usingSystem) onStatus(message)
     }
 
     private fun initialize(result: Int) {
         val engine = tts ?: return
         if (result != TextToSpeech.SUCCESS) {
             failed = true
-            pending = null
+            pending.clear()
             report(if (engine.engines.isEmpty()) R.string.tts_no_engine else R.string.tts_init_failed)
             return
         }
@@ -76,9 +82,9 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
         })
         initialized = true
         report(R.string.tts_ready)
-        val request = pending
-        pending = null
-        if (request != null) play(request)
+        val requests = pending.toList()
+        pending.clear()
+        requests.forEach(::play)
     }
 
     private fun update(id: String?, action: () -> Unit) {
@@ -86,12 +92,18 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
     }
 
     fun speak(text: String, rate: Float, interrupt: Boolean = true) {
+        if (online != null) online.speak(text, rate.coerceIn(0.5f, 2f), interrupt)
+        else speakSystem(text, rate, interrupt)
+    }
+
+    private fun speakSystem(text: String, rate: Float, interrupt: Boolean) {
         main.post {
             if (closed || text.isBlank()) return@post
             if (failed) { report(R.string.tts_init_failed); return@post }
             val request = Request(text, rate.coerceIn(0.5f, 2f), interrupt)
             if (!initialized) {
-                pending = request
+                if (interrupt) pending.clear()
+                pending.add(request)
                 report(R.string.tts_initializing)
             } else play(request)
         }
@@ -137,9 +149,10 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
     }
 
     fun stop() {
+        online?.stop()
         main.post {
             generation++
-            pending = null
+            pending.clear()
             queued.clear()
             tts?.stop()
             audio.abandonAudioFocus(focusListener)
@@ -147,9 +160,10 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
     }
 
     fun shutdown() {
+        online?.shutdown()
         closed = true
         generation++
-        pending = null
+        pending.clear()
         queued.clear()
         tts?.stop()
         tts?.shutdown()

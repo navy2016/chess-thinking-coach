@@ -15,4 +15,6 @@
     <color name="coach_purple">#803FE2</color>
     <color name="coach_positive">#237946</color>
     <color name="coach_warning">#AA402D</color>
+    <color name="coach_muted">#6E6258</color>
+    <color name="coach_purple_surface">#F0E8FF</color>
 </resources>

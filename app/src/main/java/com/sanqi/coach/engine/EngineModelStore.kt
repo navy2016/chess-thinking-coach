@@ -9,7 +9,8 @@ import java.security.MessageDigest
 
 class EngineModelStore(context: Context) {
     data class Model(val name: String, val url: String, val sha256: String, val bytes: Long)
-    data class Engine(val id: String, val title: String, val version: String, val models: List<Model>, val license: String)
+    data class Engine(val id: String, val title: String, val version: String, val models: List<Model>, val license: String,
+                      val binary: String, val games: List<String>)
     private val app = context.applicationContext
     private val verified = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
@@ -26,12 +27,20 @@ class EngineModelStore(context: Context) {
                 val hash = m.getString("sha256")
                 require(hash.matches(Regex("[a-f0-9]{64}")))
                 Model(name, m.getString("url"), hash, m.getLong("bytes"))
-            }, e.getString("license"))
+            }, e.getString("license"), e.getString("binary"), e.getJSONArray("games").let { games ->
+                List(games.length()) { games.getString(it) }
+            })
         }
     }
 
+    fun selected(kind: String): Engine {
+        val choices = catalog().filter { kind in it.games }
+        val id = app.getSharedPreferences("coach", Context.MODE_PRIVATE).getString("engine_$kind", null)
+        return choices.firstOrNull { it.id == id } ?: choices.first()
+    }
+
     fun directory(engine: Engine): File = File(app.filesDir, "engines/${engine.id}").apply { mkdirs() }
-    fun executable(engine: Engine): File = File(app.applicationInfo.nativeLibraryDir, "lib${engine.id}.so")
+    fun executable(engine: Engine): File = File(app.applicationInfo.nativeLibraryDir, "lib${engine.binary}.so")
     fun installed(engine: Engine): Boolean = engine.models.all { File(directory(engine), it.name).length() == it.bytes }
 
     fun requireModels(engine: Engine, cancelled: () -> Unit) {

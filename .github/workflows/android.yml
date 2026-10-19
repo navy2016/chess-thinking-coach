@@ -79,7 +79,7 @@ jobs:
             app/build/engine-release/pikafish.nnue app/build/engine-release/engine-corresponding-sources.tar.gz \
             --target "$GITHUB_SHA" \
             --title "三棋思考教练 $TAG" \
-            --notes "Android arm64 自建 APK（debug 签名），含 Stockfish/Pikafish/KataGo 原生程序。模型在设置中按需下载，校验后离线使用。Pikafish 权重不得未经许可商用。对应引擎源码、构建脚本与许可证见附带源码包。TTS/全屏及真机引擎启动需在目标设备验收。"
+            --notes "Android arm64 自建 APK（debug 签名），含 Stockfish/Pikafish/KataGo/Fairy-Stockfish 原生程序；Fairy 备选使用传统评估，不是官方NNUE棋力。KataGo支持b10/b15/b18按需下载并校验。Pikafish 权重不得未经许可商用。Edge在线语音为非官方实验接入，默认关闭，启用后文本发往微软，失败回退系统TTS。对应引擎及语音适配源码、构建脚本与许可证见附带源码包。声音、视觉、模型切换和性能仍需目标设备验收。"
 
       - name: Upload complete distribution
         if: success() && github.ref == 'refs/heads/main'
