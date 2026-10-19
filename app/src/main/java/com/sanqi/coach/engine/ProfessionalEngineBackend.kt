@@ -39,8 +39,9 @@ class ProfessionalEngineBackend(context: Context, private val kind: String, priv
         }
         if (cached != null) {
             cancelled()
-            onProgress(cached)
-            return cached.copy(searchMillis = 0)
+            val result = cached.cachedResult()
+            onProgress(result)
+            return result
         }
         val engine = client ?: (if (kind == "go") KataGoClient(rules, store, spec)
             else UciEngineClient(kind, rules, store, spec)).also { client = it }

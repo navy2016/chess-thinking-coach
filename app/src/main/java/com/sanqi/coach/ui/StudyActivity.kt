@@ -198,6 +198,12 @@ class StudyActivity : ImmersiveActivity() {
         var pos: Any = s.setupBoard?.let { k.positionFromBoard(it, 0) } ?: k.engine.initialPosition()
         var lastNotation: String? = null
         for (i in 0..step) {
+            if (s.moves[i] !in k.engine.legalMoves(pos)) {
+                infoText.setText(com.sanqi.coach.R.string.study_illegal_move)
+                k.setBoardPos(boardView, pos)
+                boardView.lastMove = null
+                return
+            }
             val applied = k.engine.applyMove(pos, s.moves[i])
             pos = applied.position
             lastNotation = applied.notation

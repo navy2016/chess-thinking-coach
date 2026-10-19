@@ -1,7 +1,7 @@
 package com.sanqi.coach.engine
 
 object UciProtocol {
-    data class Line(val depth: Int, val rank: Int, val score: Int, val mate: Int?, val pv: List<String>, val nodes: Int)
+    data class Line(val depth: Int, val rank: Int, val score: Int, val mate: Int?, val pv: List<String>, val nodes: Int, val totalNodes: Long = nodes.toLong())
     fun parse(line: String): Line? {
         val words = line.trim().split(Regex("\\s+"))
         if (words.firstOrNull() != "info" || "lowerbound" in words || "upperbound" in words) return null
@@ -14,6 +14,7 @@ object UciProtocol {
             if (mate > 0) 100000 - mate.coerceAtMost(999) else -100000 - mate.coerceAtLeast(-999)
         } else value("cp")?.toIntOrNull() ?: return null
         return Line(depth, value("multipv")?.toIntOrNull() ?: 1, score, mate, words.drop(pv + 1),
-            (value("nodes")?.toLongOrNull() ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+            (value("nodes")?.toLongOrNull() ?: 0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            value("nodes")?.toLongOrNull() ?: 0)
     }
 }

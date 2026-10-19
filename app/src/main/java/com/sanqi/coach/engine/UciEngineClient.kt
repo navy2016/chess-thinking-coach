@@ -2,6 +2,7 @@ package com.sanqi.coach.engine
 
 import com.sanqi.coach.coach.CandidateLine
 import com.sanqi.coach.coach.PositionAnalysis
+import com.sanqi.coach.coach.SearchEvidence
 import com.sanqi.coach.core.GameEngine
 import com.sanqi.coach.core.Move
 
@@ -46,7 +47,7 @@ class UciEngineClient(
             val depth = when (level) { 2 -> 10; 4 -> 18; else -> 14 }
             var searchMillis = 0L
             var lastProgress = 0L
-            fun search(only: Move? = null): List<UciProtocol.Line> {
+            fun search(only: Move? = null): Pair<List<UciProtocol.Line>, SearchEvidence> {
                 val millis = if (only == null && forcedMove != null) budgetMillis / 2
                     else (budgetMillis - searchMillis).coerceAtLeast(0).toInt()
                 if (millis <= 0) throw EngineException(EngineProblem.TIMEOUT)
@@ -70,19 +71,26 @@ class UciEngineClient(
                         if (rounds.size > 4) rounds.remove(rounds.keys.minOrNull())
                     }
                 }
-                searchMillis += (System.nanoTime() - started) / 1_000_000L
+                val elapsed = (System.nanoTime() - started) / 1_000_000L
+                searchMillis += elapsed
                 val needed = if (only == null) count else 1
-                return rounds.entries.filter { (_, lines) -> (1..needed).all { it in lines } }
+                val result = rounds.entries.filter { (_, lines) -> (1..needed).all { it in lines } }
                     .maxByOrNull { it.key }?.value?.values?.sortedBy { it.rank } ?: throw EngineException(EngineProblem.PROTOCOL)
+                val reached = result.minOf { it.depth }
+                return result to SearchEvidence(java.util.UUID.randomUUID().toString(), kind, spec.id, spec.version,
+                    spec.models.map { "${it.name}:${it.sha256}" }, "cp", rules.sideToMove(position), millis,
+                    reached, depth, result.maxOf { it.totalNodes }, 0, elapsed, true, reached >= depth, only != null,
+                    "Threads=2;Hash=64;MultiPV=$needed;variant=$kind;classical=$fairy")
             }
-            val lines = search().toMutableList()
+            val baseline = search()
+            val lines = baseline.first.map { it to baseline.second }.toMutableList()
             var comparable = true
-            if (forcedMove != null && lines.none { PositionCodec.parseUci(it.pv.first(), kind, fairy) == forcedMove }) {
-                val forced = search(forcedMove).first()
-                comparable = forced.depth == lines.first().depth
-                lines.add(forced)
+            if (forcedMove != null && lines.none { PositionCodec.parseUci(it.first.pv.first(), kind, fairy) == forcedMove }) {
+                val forced = search(forcedMove)
+                comparable = false
+                lines.add(forced.first.first() to forced.second)
             }
-            val candidates = lines.map { line ->
+            val candidates = lines.map { (line, evidence) ->
                 var pos = rules.copyPosition(position)
                 val moves = line.pv.take(16).map { token ->
                     val move = PositionCodec.parseUci(token, kind, fairy)
@@ -90,10 +98,11 @@ class UciEngineClient(
                     pos = rules.applyMove(pos, move).position
                     move
                 }
-                CandidateLine(moves.first(), line.score, moves, line.mate)
-            }.distinctBy { it.move }.sortedByDescending { it.score }
-            return PositionAnalysis(candidates, candidates.first().score, lines.minOf { it.depth }, depth,
-                lines.maxOf { it.nodes }, lines.minOf { it.depth } < depth, false, "${spec.title} ${spec.version}", "cp", comparable && lines.all { it.mate == null }, searchMillis)
+                CandidateLine(moves.first(), line.score, moves, line.mate, evidence = evidence)
+            }.distinctBy { it.move }
+            return PositionAnalysis(candidates, candidates.first().score, lines.minOf { it.first.depth }, depth,
+                lines.maxOf { it.first.nodes }, lines.minOf { it.first.depth } < depth, false,
+                "${spec.title} ${spec.version}", "cp", comparable, searchMillis)
         } catch (error: Exception) {
             process.close()
             if (active === process) active = null

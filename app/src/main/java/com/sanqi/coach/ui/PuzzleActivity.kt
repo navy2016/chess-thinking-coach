@@ -245,10 +245,7 @@ class PuzzleActivity : ImmersiveActivity() {
             return
         }
         val applied = k.engine.applyMove(k.engine.copyPosition(pos), move)
-        val success = when (p.goal) {
-            "mate" -> applied.status == GameStatus.CHECKMATE
-            else -> move == p.solution || applied.captured > 0
-        }
+        val success = p.solvedBy(applied)
         if (success) {
             selectFrom = -1
             targets.clear()

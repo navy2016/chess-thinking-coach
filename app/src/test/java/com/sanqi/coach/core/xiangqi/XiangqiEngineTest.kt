@@ -113,14 +113,15 @@ class XiangqiEngineTest {
 
     @Test
     fun testDoubleRookMate() {
-        // 双车错：红被照面将军，车四平五既解将又将杀
         val b = board(
-            3 to 5, 4 to 1, 5 to 5,
+            3 to 5, 5 to 1,
             27 to -4,
             45 to 5,
             85 to -1
         )
+        assertTrue(Move(45, 49) in e.legalMoves(pos(b, 0)))
         val r = e.applyMove(pos(b, 0), Move(45, 49))
+        assertTrue(r.notation.startsWith("车九平五"))
         assertTrue(r.check)
         assertEquals(GameStatus.CHECKMATE, r.status)
     }

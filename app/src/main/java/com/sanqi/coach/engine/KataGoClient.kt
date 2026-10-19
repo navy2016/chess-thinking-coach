@@ -2,6 +2,7 @@ package com.sanqi.coach.engine
 
 import com.sanqi.coach.coach.CandidateLine
 import com.sanqi.coach.coach.PositionAnalysis
+import com.sanqi.coach.coach.SearchEvidence
 import com.sanqi.coach.core.GameEngine
 import com.sanqi.coach.core.Move
 import com.sanqi.coach.core.go.GoPosition
@@ -89,10 +90,16 @@ class KataGoClient(
                             CandidateLine(variation.first(), (lead * 100).roundToInt(), variation, winrate = winrate)
                         }
                     if (candidates.isEmpty()) throw EngineException(EngineProblem.PROTOCOL)
-                    val visits = result.getJSONObject("rootInfo").getInt("visits")
-                    searchMillis += (System.nanoTime() - started) / 1_000_000L
+                    val visits = result.getJSONObject("rootInfo").getLong("visits")
+                    val elapsed = (System.nanoTime() - started) / 1_000_000L
+                    searchMillis += elapsed
                     val target = when (level) { 2 -> 64; 4 -> 512; else -> 192 }
-                    return PositionAnalysis(candidates, candidates.first().score, 0, 0, visits, visits < target, false,
+                    val evidence = SearchEvidence(id, "go", spec.id, spec.version,
+                        spec.models.map { "${it.name}:${it.sha256}" }, "points", pos.toMove, millis,
+                        0, 0, visits, target, elapsed, true, visits >= target, only != null,
+                        "rules=chinese;komi=7.5;threads=2;board=${pos.size};perspective=SIDETOMOVE")
+                    return PositionAnalysis(candidates.map { it.copy(evidence = evidence) }, candidates.first().score,
+                        0, 0, visits.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), visits < target, false,
                         "${spec.title} ${spec.version}", "points", searchMillis = searchMillis)
                 }
             }

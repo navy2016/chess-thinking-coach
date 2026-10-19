@@ -11,9 +11,10 @@ data class StoredMove(
     val to: Int,
     val promo: Int,
     val notation: String,
-    val loss: Int,
+    val loss: Int?,
     val gradeName: String,
-    val explanation: String
+    val explanation: String,
+    val analysis: com.sanqi.coach.coach.MoveAssessment? = null
 )
 
 data class StoredGame(
@@ -41,7 +42,7 @@ object GameStore {
         return d
     }
 
-    fun save(ctx: Context, game: StoredGame) {
+    internal fun encode(game: StoredGame): JSONObject {
         val arr = JSONArray()
         for (m in game.moves) {
             val o = JSONObject()
@@ -52,9 +53,11 @@ object GameStore {
             o.put("loss", m.loss)
             o.put("grade", m.gradeName)
             o.put("explanation", m.explanation)
+            o.put("analysis", m.analysis?.let { AnalysisRecord.encode(it) })
             arr.put(o)
         }
         val root = JSONObject()
+        root.put("schemaVersion", 2)
         root.put("id", game.id)
         root.put("kind", game.kind)
         root.put("mode", game.mode)
@@ -66,6 +69,11 @@ object GameStore {
         root.put("result", game.resultText)
         root.put("moves", arr)
         root.put("deadStones", JSONArray(game.deadStones))
+        return root
+    }
+
+    fun save(ctx: Context, game: StoredGame) {
+        val root = encode(game)
         val file = AtomicFile(File(dir(ctx), game.id + ".json"))
         val stream = file.startWrite()
         try {
@@ -108,7 +116,8 @@ object GameStore {
         AtomicFile(f).delete()
     }
 
-    private fun parse(f: File, o: JSONObject): StoredGame {
+    internal fun parse(f: File, o: JSONObject): StoredGame {
+        require(o.optInt("schemaVersion", 1) in 1..2)
         val arr = o.getJSONArray("moves")
         val moves = mutableListOf<StoredMove>()
         for (i in 0 until arr.length()) {
@@ -119,9 +128,10 @@ object GameStore {
                     m.optInt("to", -1),
                     m.optInt("promo", 0),
                     m.optString("notation", ""),
-                    m.optInt("loss", 0),
+                    if (m.isNull("loss")) null else m.getInt("loss"),
                     m.optString("grade", ""),
-                    m.optString("explanation", "")
+                    m.optString("explanation", ""),
+                    AnalysisRecord.decode(m.optJSONObject("analysis"))?.takeIf { it.kind == o.optString("kind") }
                 )
             )
         }

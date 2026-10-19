@@ -12,8 +12,8 @@ android {
         applicationId = "com.sanqi.coach"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -38,6 +38,7 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.all { it.systemProperty("coach.assets", file("src/main/assets").absolutePath) }
     }
 }
 
@@ -59,4 +60,5 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
