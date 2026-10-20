@@ -5,7 +5,7 @@ import com.sanqi.coach.R
 import com.sanqi.coach.core.GameStatus
 
 object Explainer {
-    data class Part(val text: String, val branch: Int? = null, val step: Int = 0, val alternative: Boolean = false)
+    data class Part(val text: String, val branch: Int? = null, val step: Int = 0, val alternative: Boolean = false, val id: String = "")
 
     fun gradeLabel(context: Context, grade: Grade): String = context.getString(when (grade) {
         Grade.BEST -> R.string.grade_best
@@ -65,6 +65,7 @@ object Explainer {
 
     fun parts(context: Context, preview: CoachSession.Preview): List<Part> {
         val parts = mutableListOf(Part(assessment(context, preview.assessment)))
+        preview.teaching?.points?.forEach { parts.add(teachingPart(context, it)) }
         parts.add(Part(context.getString(R.string.evidence_played, preview.notation, fact(context, preview.playedStep)), 0))
         parts.add(Part(context.getString(R.string.evidence_conditional)))
         for ((branch, reply) in preview.replies.withIndex()) {
@@ -86,8 +87,65 @@ object Explainer {
                     step.notation, fact(context, step)), step = index + 1, alternative = true))
             }
         }
-        return parts
+        return parts.mapIndexed { index, part -> if (part.id.isEmpty()) part.copy(id = "fact_$index") else part }
     }
+
+    fun teachingPart(context: Context, point: TeachingPoint): Part {
+        val name = context.getString(when (point.feature) {
+            TeachingFeature.PIECES -> R.string.feature_pieces
+            TeachingFeature.KING_ATTACKED -> R.string.feature_king_attacked
+            TeachingFeature.KING_ZONE_ATTACKS -> R.string.feature_king_zone
+            TeachingFeature.CENTER_OCCUPANCY -> R.string.feature_center_occupancy
+            TeachingFeature.CENTER_CONTROL -> R.string.feature_center_control
+            TeachingFeature.MINORS_OFF_HOME -> R.string.feature_minors
+            TeachingFeature.ROOK_CANNON_MOVES -> R.string.feature_rook_cannon
+            TeachingFeature.BLOCKED_HORSE_LEGS -> R.string.feature_horse_legs
+            TeachingFeature.GO_GROUPS -> R.string.feature_go_groups
+            TeachingFeature.GO_ATARI_GROUPS -> R.string.feature_go_atari
+            TeachingFeature.GO_FOCUS_LIBERTIES -> R.string.feature_go_liberties
+            TeachingFeature.GO_CAPTURABLE_STONES -> R.string.feature_go_capturable
+        })
+        val location = context.getString(when {
+            point.alternative -> R.string.teaching_at_alternative
+            point.step > 0 -> R.string.teaching_at_reply
+            else -> R.string.teaching_at_move
+        })
+        val text = context.getString(R.string.teaching_delta, location, name,
+            point.before?.toString() ?: context.getString(R.string.teaching_not_applicable), point.after) +
+            "\n" + principle(context, point.feature)
+        return Part(text, point.branch, point.step, point.alternative, point.id)
+    }
+
+    private fun principle(context: Context, feature: TeachingFeature): String = context.getString(when (feature) {
+        TeachingFeature.PIECES -> R.string.principle_pieces
+        TeachingFeature.KING_ATTACKED -> R.string.principle_king_attacked
+        TeachingFeature.KING_ZONE_ATTACKS -> R.string.principle_king_zone
+        TeachingFeature.CENTER_OCCUPANCY -> R.string.principle_center_occupancy
+        TeachingFeature.CENTER_CONTROL -> R.string.principle_center_control
+        TeachingFeature.MINORS_OFF_HOME -> R.string.principle_minors
+        TeachingFeature.ROOK_CANNON_MOVES -> R.string.principle_rook_cannon
+        TeachingFeature.BLOCKED_HORSE_LEGS -> R.string.principle_horse_legs
+        TeachingFeature.GO_GROUPS -> R.string.principle_go_groups
+        TeachingFeature.GO_ATARI_GROUPS -> R.string.principle_go_atari
+        TeachingFeature.GO_FOCUS_LIBERTIES -> R.string.principle_go_liberties
+        TeachingFeature.GO_CAPTURABLE_STONES -> R.string.principle_go_capturable
+    })
+
+    fun topic(context: Context, preview: CoachSession.Preview, topic: TeachingInteraction.Topic): List<Part> {
+        val points = preview.teaching?.points.orEmpty()
+        val selected = when (topic) {
+            TeachingInteraction.Topic.WHY -> points.filter { !it.alternative && it.step == 0 }
+            TeachingInteraction.Topic.RISK -> points.filter { !it.alternative && it.risk }
+            TeachingInteraction.Topic.ALTERNATIVE -> points.filter { it.alternative }
+            TeachingInteraction.Topic.PRINCIPLE -> listOfNotNull(preview.teaching?.mainPoint)
+        }.take(2)
+        if (selected.isNotEmpty()) return selected.map { teachingPart(context, it) }
+        return listOf(Part(context.getString(R.string.teaching_no_evidence)))
+    }
+
+    fun brief(context: Context, preview: CoachSession.Preview): String =
+        preview.teaching?.mainPoint?.let { teachingPart(context, it).text }
+            ?: context.getString(R.string.evidence_played, preview.notation, fact(context, preview.playedStep))
 
     fun explain(context: Context, preview: CoachSession.Preview): String =
         parts(context, preview).joinToString("\n") { it.text }

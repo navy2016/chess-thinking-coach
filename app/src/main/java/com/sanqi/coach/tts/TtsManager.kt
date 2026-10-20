@@ -12,7 +12,7 @@ import android.util.Log
 import com.sanqi.coach.R
 import java.util.Locale
 
-class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) {
+class TtsManager(context: Context, private val offlineOnly: Boolean = false, private val onStatus: (String) -> Unit = {}) {
     private val app = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -30,7 +30,7 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
     }
 
     private val online = app.getSharedPreferences("coach", Context.MODE_PRIVATE).let { prefs ->
-        if (prefs.getBoolean("edgeTts", false) && prefs.getBoolean("edgeConsent", false))
+        if (!offlineOnly && prefs.getBoolean("edgeTts", false) && prefs.getBoolean("edgeConsent", false))
             OnlineSpeech(app, onStatus) { text, rate, interrupt -> speakSystem(text, rate, interrupt) }
         else null
     }
@@ -113,10 +113,21 @@ class TtsManager(context: Context, private val onStatus: (String) -> Unit = {}) 
         val engine = tts ?: return
         val language = if (request.text.any { it in '\u3400'..'\u9fff' }) Locale.SIMPLIFIED_CHINESE
             else app.resources.configuration.locales[0]
-        val supported = engine.setLanguage(language)
-        if (supported < TextToSpeech.LANG_AVAILABLE) {
-            report(if (supported == TextToSpeech.LANG_MISSING_DATA) R.string.tts_missing_data else R.string.tts_language_unavailable)
-            return
+        if (offlineOnly) {
+            val voice = engine.voices.orEmpty().filter {
+                !it.isNetworkConnectionRequired && it.locale.language == language.language &&
+                    TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features.orEmpty()
+            }.sortedBy { if (it.locale.country == language.country) 0 else 1 }.firstOrNull()
+            if (voice == null || engine.setVoice(voice) != TextToSpeech.SUCCESS) {
+                report(R.string.offline_voice_needed)
+                return
+            }
+        } else {
+            val supported = engine.setLanguage(language)
+            if (supported < TextToSpeech.LANG_AVAILABLE) {
+                report(if (supported == TextToSpeech.LANG_MISSING_DATA) R.string.tts_missing_data else R.string.tts_language_unavailable)
+                return
+            }
         }
         if (audio.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
             report(R.string.tts_volume_zero)

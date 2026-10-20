@@ -3,8 +3,6 @@ package com.sanqi.coach.engine
 import android.content.Context
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.security.MessageDigest
 
 class EngineModelStore(context: Context) {
@@ -55,10 +53,19 @@ class EngineModelStore(context: Context) {
         }
     }
 
-    fun download(engine: Engine, cancelled: () -> Unit, progress: (Long, Long) -> Unit) {
+    private val downloader = ResumableModelDownloader()
+
+    fun cancelDownload() = downloader.cancel()
+
+    fun downloadedBytes(engine: Engine): Long = engine.models.sumOf { model ->
+        val target = File(directory(engine), model.name)
+        if (target.length() == model.bytes) model.bytes
+        else ResumableModelDownloader.partial(target, model.sha256).length().coerceAtMost(model.bytes)
+    }
+
+    fun download(engine: Engine, cancelled: () -> Unit,
+                 progress: (Long, Long, ResumableModelDownloader.Phase, Int) -> Unit) {
         val dir = directory(engine)
-        val required = engine.models.filter { File(dir, it.name).length() != it.bytes }.sumOf { it.bytes }
-        require(dir.usableSpace > required + 32L * 1024 * 1024) { "INSUFFICIENT_SPACE" }
         val total = engine.models.sumOf { it.bytes }
         var completed = 0L
         for (model in engine.models) {
@@ -66,58 +73,13 @@ class EngineModelStore(context: Context) {
             val target = File(dir, model.name)
             if (target.isFile && target.length() == model.bytes && digest(target, cancelled) == model.sha256) {
                 completed += model.bytes
-                progress(completed, total)
+                progress(completed, total, ResumableModelDownloader.Phase.VERIFYING, 0)
                 continue
             }
-            require(dir.usableSpace > model.bytes + 32L * 1024 * 1024) { "INSUFFICIENT_SPACE" }
-            val temporary = File(dir, model.name + ".part")
-            var address = URL(model.url)
-            var connection: HttpURLConnection? = null
-            try {
-                for (redirect in 0..5) {
-                    cancelled()
-                    require(address.protocol == "https")
-                    val current = address.openConnection() as HttpURLConnection
-                    current.connectTimeout = 15000
-                    current.readTimeout = 15000
-                    current.instanceFollowRedirects = false
-                    connection = current
-                    val status = current.responseCode
-                    if (status in 300..399) {
-                        val location = current.getHeaderField("Location") ?: error("REDIRECT_WITHOUT_LOCATION")
-                        address = URL(address, location)
-                        current.disconnect()
-                        if (redirect == 5) error("TOO_MANY_REDIRECTS")
-                        continue
-                    }
-                    check(status == 200) { "HTTP_$status" }
-                    break
-                }
-                val source = connection ?: error("NO_CONNECTION")
-                val hash = MessageDigest.getInstance("SHA-256")
-                var received = 0L
-                source.inputStream.use { input -> temporary.outputStream().use { output ->
-                    val buffer = ByteArray(65536)
-                    while (true) {
-                        cancelled()
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        received += n
-                        check(received <= model.bytes) { "MODEL_SIZE_MISMATCH" }
-                        output.write(buffer, 0, n)
-                        hash.update(buffer, 0, n)
-                        progress(completed + received, total)
-                    }
-                    output.fd.sync()
-                } }
-                check(received == model.bytes && hex(hash.digest()) == model.sha256) { "MODEL_CHECKSUM_MISMATCH" }
-                cancelled()
-                check(temporary.renameTo(target)) { "MODEL_INSTALL_FAILED" }
-                completed += received
-            } finally {
-                connection?.disconnect()
-                temporary.delete()
+            downloader.download(model.url, target, model.bytes, model.sha256, cancelled) { received, phase, attempt ->
+                progress(completed + received, total, phase, attempt)
             }
+            completed += model.bytes
         }
     }
 

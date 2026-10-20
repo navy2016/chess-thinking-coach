@@ -20,6 +20,9 @@ import com.sanqi.coach.coach.Grade
 import com.sanqi.coach.coach.MoveRating
 import com.sanqi.coach.coach.CandidateLine
 import com.sanqi.coach.coach.TentativePlans
+import com.sanqi.coach.coach.TeachingInteraction
+import com.sanqi.coach.coach.OnlineCoachClient
+import com.sanqi.coach.coach.OnlineCoachSettings
 import com.sanqi.coach.core.GameEngine
 import com.sanqi.coach.core.GameStatus
 import com.sanqi.coach.core.Move
@@ -109,6 +112,18 @@ class GameActivity : ImmersiveActivity() {
     private var progressText: TextView? = null
     private var analysisElapsed = 0f
     private var engineChoice: String? = null
+    private val teaching = TeachingInteraction()
+    private val onlineCoach = OnlineCoachClient()
+    private var lessonJob: Job? = null
+    private var lessonGeneration = 0L
+    private var lessonBody: LinearLayout? = null
+    private var lessonPreview: CoachSession.Preview? = null
+    private var lessonParts = emptyList<Explainer.Part>()
+    private var lessonOnline = false
+    private var lessonThinking = true
+    private var lessonNotice = ""
+    private val discussion = mutableListOf<Pair<String, String>>()
+    private var lessonCitations = emptyMap<String, List<Explainer.Part>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -179,15 +194,19 @@ class GameActivity : ImmersiveActivity() {
             engineChoice = choice
             feedback = getString(R.string.engine_selection_changed)
         }
-        tts?.shutdown()
-        tts = TtsManager(this) { message ->
-            if (!isFinishing && !isDestroyed && message !in listOf(getString(R.string.tts_ready), getString(R.string.tts_speaking), getString(R.string.tts_initializing),
-                    getString(R.string.edge_ready), getString(R.string.edge_loading)))
-                android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
-        }
+        resetTeachingSpeech()
         render()
         if (mode != CoachSession.Mode.REVIEW && !gameDone && !scoring()) {
             if (mode == CoachSession.Mode.VS_AI && session.sideToMove() == 1) aiTurn()
+        }
+    }
+
+    private fun resetTeachingSpeech() {
+        tts?.shutdown()
+        tts = TtsManager(this, offlineOnly = !OnlineCoachSettings(this).enabled) { message ->
+            if (!isFinishing && !isDestroyed && message !in listOf(getString(R.string.tts_ready), getString(R.string.tts_speaking),
+                    getString(R.string.tts_initializing), getString(R.string.edge_ready), getString(R.string.edge_loading)))
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -287,12 +306,14 @@ class GameActivity : ImmersiveActivity() {
             contentDescription = getString(R.string.board_description)
         }
         center.addView(board, LinearLayout.LayoutParams(-1, 0, 1f))
+        var boardHeightPx = 0
         if (wide) root.addView(center, LinearLayout.LayoutParams(0, -1, 1f))
         else {
             val ratio = if (kind == "xiangqi") 10f / 9f else 1f
             val reserved = (160 * resources.configuration.fontScale).toInt()
             val boardHeight = minOf((widthDp * ratio + 52).toInt(), ((heightDp - reserved).coerceAtLeast(0) * 0.80f).toInt())
-            root.addView(center, LinearLayout.LayoutParams(-1, dp(boardHeight)))
+            boardHeightPx = dp(boardHeight)
+            root.addView(center, LinearLayout.LayoutParams(-1, boardHeightPx))
         }
         val right = column().apply { setPadding(dp(12), dp(8), dp(12), dp(8)) }
         playbackPanel = column()
@@ -309,6 +330,13 @@ class GameActivity : ImmersiveActivity() {
             val density = resources.displayMetrics.density
             val w = ((view.width - view.paddingLeft - view.paddingRight) / density).toInt()
             val h = ((view.height - view.paddingTop - view.paddingBottom) / density).toInt()
+            val keyboard = androidx.core.view.ViewCompat.getRootWindowInsets(view)
+                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) == true
+            if (!wide) {
+                val height = if (keyboard) minOf(boardHeightPx, dp(maxOf(80, h / 3))) else boardHeightPx
+                if (center.layoutParams.height != height) center.layoutParams = center.layoutParams.apply { this.height = height }
+            }
+            if (keyboard) return@addOnLayoutChangeListener
             if (w > 0 && h > 0 && (abs(w - safeWidth) > 2 || abs(h - safeHeight) > 2)) {
                 safeWidth = w
                 safeHeight = h
@@ -380,6 +408,7 @@ class GameActivity : ImmersiveActivity() {
         analysisPanel.removeAllViews()
         playbackPanel.removeAllViews()
         progressText = null
+        lessonBody = null
         actions.removeAllViews()
         replyCards.clear()
         previousLineButton = null
@@ -446,6 +475,7 @@ class GameActivity : ImmersiveActivity() {
                 if (kind == "go" && !showSidebar && pending == null) addAction(getString(R.string.pass)) { propose(Move(-1, -1)) }
             }
         }
+        if (mode != CoachSession.Mode.REVIEW && !gameDone) addAction(getString(R.string.tts_stop)) { cancelLesson(); render() }
         refreshBoard()
     }
 
@@ -467,9 +497,15 @@ class GameActivity : ImmersiveActivity() {
     }
 
     private fun selectPlan(index: Int) {
+        cancelLesson()
         if (busy) cancelWork()
         showPlan(plans.select(index, session.revision))
         render()
+        preview?.let { p ->
+            val other = plans.get(1 - plans.active)?.preview
+            narrate("plan:${p.revision}:${p.move}", if (other == null) Explainer.brief(this, p)
+                else getString(R.string.teaching_compare, p.notation, Explainer.brief(this, p), other.notation, Explainer.brief(this, other)))
+        }
     }
 
     private fun showPlan(plan: TentativePlans.Plan?) {
@@ -484,6 +520,7 @@ class GameActivity : ImmersiveActivity() {
     }
 
     private fun editPlan() {
+        cancelLesson()
         pending = null
         preview = null
         branch = 0
@@ -496,6 +533,17 @@ class GameActivity : ImmersiveActivity() {
     }
 
     private fun renderPreview(p: CoachSession.Preview) {
+        if (lessonPreview !== p) {
+            cancelLesson()
+            teaching.clear()
+            lessonPreview = p
+            lessonParts = emptyList()
+            lessonOnline = false
+            lessonThinking = lineStep == 0
+            lessonNotice = ""
+            discussion.clear()
+            lessonCitations = emptyMap()
+        }
         analysisPanel.addView(text(getString(R.string.hypothetical_analysis), 20f, true))
         analysisPanel.addView(text(getString(R.string.preview_move, p.notation), 17f, true))
         analysisPanel.addView(text(Explainer.assessment(this, p.assessment), 14f))
@@ -509,6 +557,7 @@ class GameActivity : ImmersiveActivity() {
         p.analysis.engine?.let { analysisPanel.addView(text(it, 13f, true)) }
         analysisPanel.addView(text(getString(R.string.analysis_elapsed, analysisElapsed), 13f))
         if (p.analysis.limited || p.repliesLimited) analysisPanel.addView(text(getString(R.string.analysis_limited), 13f))
+        renderTeaching(p)
         analysisPanel.addView(text(getString(R.string.opponent_replies), 17f, true).apply { setPadding(0, dp(12), 0, dp(6)) })
         if (kind != "go") analysisPanel.addView(text(getString(R.string.reply_depth, p.replyDepth), 12f))
         if (p.replies.isEmpty()) analysisPanel.addView(text(getString(R.string.no_reply), 13f))
@@ -533,10 +582,11 @@ class GameActivity : ImmersiveActivity() {
             card.addView(text(reply.notations.mapIndexed { i, notation ->
                 getString(R.string.reply_step, i + 1, sideLabel((session.sideToMove() + 1 + i) % 2), notation)
             }.joinToString("\n"), 14f))
+            card.visibility = if (lessonThinking) android.view.View.GONE else android.view.View.VISIBLE
             replyCards.add(card)
             analysisPanel.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
         }
-        if (p.replies.isNotEmpty() || p.alternative.isNotEmpty()) {
+        if (!lessonThinking && (p.replies.isNotEmpty() || p.alternative.isNotEmpty())) {
             branch = branch.coerceIn(0, maxOf(0, p.replies.lastIndex))
             val total = if (alternative) p.alternative.size else p.replies.getOrNull(branch)?.moves?.size ?: 0
             lineStep = lineStep.coerceIn(0, total)
@@ -555,23 +605,6 @@ class GameActivity : ImmersiveActivity() {
         }
         if (p.alternative.isNotEmpty()) analysisPanel.addView(text(getString(R.string.recommended_score,
             p.bestNotation.orEmpty(), Explainer.score(this, kind, p.assessment.reference)), 14f))
-        analysisPanel.addView(text(getString(R.string.local_explanation), 17f, true))
-        for (part in Explainer.parts(this, p)) {
-            val view = text(part.text, 14f).apply { setPadding(0, dp(8), 0, dp(8)) }
-            if (part.branch != null || part.alternative) {
-                view.setTextColor(color(R.color.coach_accent))
-                view.isFocusable = true
-                view.minimumHeight = dp(48)
-                view.setOnClickListener {
-                    alternative = part.alternative
-                    branch = part.branch ?: 0
-                    lineStep = part.step
-                    updateLineSelection()
-                }
-            }
-            analysisPanel.addView(view)
-        }
-        analysisPanel.addView(button(getString(R.string.read_aloud)) { speak(Explainer.explain(this, p), true) })
         analysisPanel.addView(text(getString(R.string.preview_tap_help), 13f))
         val details = column().apply {
             visibility = android.view.View.GONE
@@ -593,8 +626,189 @@ class GameActivity : ImmersiveActivity() {
         addAction(getString(R.string.confirm_move), true) { commitPending() }
     }
 
-    private fun updateLineSelection() {
+    private fun renderTeaching(p: CoachSession.Preview) {
+        analysisPanel.addView(text(getString(R.string.teaching_title), 18f, true))
+        val online = OnlineCoachSettings(this).enabled
+        analysisPanel.addView(button(getString(if (online) R.string.teaching_switch_offline else R.string.teaching_offline_mode)) {
+            if (online) {
+                OnlineCoachSettings(this).setEnabled(false)
+                cancelLesson()
+                lessonOnline = false
+                lessonParts = Explainer.topic(this, p, TeachingInteraction.Topic.WHY)
+                lessonNotice = getString(R.string.teaching_now_offline)
+                discussion.clear()
+                resetTeachingSpeech()
+                render()
+            } else startActivity(Intent(this, SettingsActivity::class.java))
+        })
+        if (lessonNotice.isNotEmpty()) analysisPanel.addView(text(lessonNotice, 13f))
+        val choices = listOf(R.string.teaching_why to TeachingInteraction.Topic.WHY,
+            R.string.teaching_risk to TeachingInteraction.Topic.RISK,
+            R.string.teaching_alternative to TeachingInteraction.Topic.ALTERNATIVE,
+            R.string.teaching_principle to TeachingInteraction.Topic.PRINCIPLE)
+        for (pair in choices.chunked(2)) {
+            val row = LinearLayout(this)
+            for ((label, topic) in pair) row.addView(button(getString(label)) {
+                cancelLesson()
+                lessonThinking = false
+                lessonOnline = false
+                lessonNotice = ""
+                lessonParts = Explainer.topic(this, p, topic)
+                render()
+                narrate("topic:${p.revision}:${p.move}:$topic", lessonParts.first().text)
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            analysisPanel.addView(row)
+        }
+        val reveal = LinearLayout(this)
+        reveal.addView(button(getString(R.string.teaching_think_first)) {
+            cancelLesson()
+            lessonThinking = true
+            lessonOnline = false
+            lessonParts = emptyList()
+            alternative = false
+            branch = 0
+            lineStep = 0
+            updateLineSelection(false)
+            render()
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        reveal.addView(button(getString(R.string.teaching_reveal)) {
+            cancelLesson()
+            lessonThinking = false
+            lessonOnline = false
+            lessonParts = Explainer.topic(this, p, TeachingInteraction.Topic.RISK)
+            branch = 0
+            alternative = false
+            lineStep = minOf(1, p.replies.firstOrNull()?.moves?.size ?: 0)
+            render()
+            updateLineSelection()
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        analysisPanel.addView(reveal)
+        lessonBody = column()
+        analysisPanel.addView(lessonBody)
+        renderLessonBody(p)
+        val speech = LinearLayout(this)
+        speech.addView(button(getString(R.string.teaching_repeat)) {
+            narrate("repeat", teaching.lastText.ifEmpty { Explainer.brief(this, p) }, true)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        speech.addView(button(getString(R.string.teaching_rephrase)) {
+            if (online) askOnline(p, getString(R.string.teaching_rephrase_question))
+            else {
+                cancelLesson()
+                lessonThinking = false
+                lessonParts = Explainer.topic(this, p, TeachingInteraction.Topic.PRINCIPLE)
+                lessonOnline = false
+                lessonNotice = getString(R.string.teaching_offline_limits)
+                render()
+                narrate("rephrase:${p.revision}:${p.move}", lessonParts.first().text, true)
+            }
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        analysisPanel.addView(speech)
+        if (online) {
+            analysisPanel.addView(button(getString(R.string.teaching_online_explain)) { askOnline(p, getString(R.string.teaching_online_question)) })
+            val question = android.widget.EditText(this).apply {
+                setHint(R.string.teaching_question_hint)
+                filters = arrayOf(android.text.InputFilter.LengthFilter(800))
+                maxLines = 3
+            }
+            analysisPanel.addView(question)
+            analysisPanel.addView(button(getString(R.string.teaching_send_question)) { askOnline(p, question.text.toString()) })
+        } else analysisPanel.addView(text(getString(R.string.teaching_offline_limits), 12f))
+        val evidence = column().apply { visibility = android.view.View.GONE }
+        for (part in Explainer.parts(this, p)) evidence.addView(button(part.text) { locateAndRead(p, part) })
+        analysisPanel.addView(button(getString(R.string.teaching_evidence)) {
+            evidence.visibility = if (evidence.visibility == android.view.View.VISIBLE) android.view.View.GONE else android.view.View.VISIBLE
+        })
+        analysisPanel.addView(evidence)
+    }
+
+    private fun renderLessonBody(p: CoachSession.Preview) {
+        val body = lessonBody ?: return
+        body.removeAllViews()
+        if (lessonThinking) {
+            body.addView(text(getString(R.string.teaching_choose_prompt), 15f, true))
+            return
+        }
+        if (lessonOnline) body.addView(text(getString(R.string.teaching_ai_warning), 12f))
+        if (lessonParts.isEmpty()) body.addView(text(Explainer.brief(this, p), 14f))
+        for (part in lessonParts) {
+            body.addView(text(part.text, 15f))
+            val row = LinearLayout(this)
+            row.addView(button(getString(R.string.teaching_read_part)) { narrate("manual", part.text, true) }, LinearLayout.LayoutParams(0, -2, 1f))
+            if (lessonOnline) row.addView(button(getString(R.string.teaching_evidence)) {
+                val cited = lessonCitations[part.id].orEmpty()
+                AlertDialog.Builder(this).setTitle(R.string.teaching_evidence).setItems(cited.map { it.text }.toTypedArray()) { _, index ->
+                    locateAndRead(p, cited[index])
+                }.setNegativeButton(R.string.close, null).show()
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            else if (part.branch != null || part.alternative) row.addView(button(getString(R.string.teaching_locate)) { locateAndRead(p, part) }, LinearLayout.LayoutParams(0, -2, 1f))
+            body.addView(row)
+        }
+    }
+
+    private fun locateAndRead(p: CoachSession.Preview, part: Explainer.Part) {
+        if (preview !== p || !session.accepts(p)) return
+        cancelLesson()
+        lessonThinking = false
+        alternative = part.alternative
+        branch = part.branch ?: 0
+        lineStep = part.step
+        plans.playback(branch, lineStep, alternative)
+        render()
+        updateLineSelection(false)
+        narrate("evidence:${p.revision}:${p.move}:${part.id}", part.text, true)
+    }
+
+    private fun askOnline(p: CoachSession.Preview, question: String) {
+        val settings = OnlineCoachSettings(this)
+        val configuration = settings.configuration()
+        if (!settings.enabled || configuration == null) { toast(R.string.online_coach_config_needed); return }
+        if (question.isBlank() || question.length > 800) { toast(R.string.teaching_question_needed); return }
+        if (preview !== p || !session.accepts(p)) return
+        cancelLesson()
+        val token = lessonGeneration
+        val evidence = Explainer.parts(this, p)
+        val position = when (val pos = session.current) {
+            is GoPosition -> "go;size=${pos.size};side=${pos.toMove};ko=${pos.koPoint};board=${pos.board.joinToString(",")}"
+            else -> "$kind;${com.sanqi.coach.engine.PositionCodec.fen(pos)}"
+        }
+        lessonThinking = false
+        lessonOnline = false
+        lessonParts = Explainer.topic(this, p, TeachingInteraction.Topic.WHY)
+        lessonNotice = getString(R.string.teaching_online_wait)
+        render()
+        lessonJob = scope.launch {
+            try {
+                val response = onlineCoach.explain(configuration, position, evidence.map { OnlineCoachClient.Evidence(it.id, it.text) },
+                    question, resources.configuration.locales[0].language, discussion.toList())
+                if (token != lessonGeneration || preview !== p || !session.accepts(p) || !settings.enabled ||
+                    configuration.endpoint != settings.endpoint || configuration.model != settings.model) return@launch
+                lessonCitations = response.mapIndexed { index, paragraph ->
+                    "online_$index" to paragraph.evidenceIds.map { id -> evidence.first { it.id == id } }
+                }.toMap()
+                lessonParts = response.mapIndexed { index, paragraph ->
+                    Explainer.Part(paragraph.text, id = "online_$index")
+                }
+                discussion.add(question to response.joinToString("\n") { it.text })
+                if (discussion.size > 3) discussion.removeAt(0)
+                lessonOnline = true
+                lessonNotice = ""
+                lessonJob = null
+                render()
+            } catch (_: CancellationException) {
+            } catch (_: Exception) {
+                if (token == lessonGeneration && preview === p && !isDestroyed) {
+                    lessonJob = null
+                    lessonOnline = false
+                    lessonNotice = getString(R.string.teaching_online_fallback)
+                    render()
+                }
+            }
+        }
+    }
+
+    private fun updateLineSelection(read: Boolean = true) {
         val p = preview ?: return
+        if (read) cancelLesson()
         val total = if (alternative) p.alternative.size else p.replies.getOrNull(branch)?.moves?.size ?: 0
         lineStep = lineStep.coerceIn(0, total)
         for ((index, card) in replyCards.withIndex()) {
@@ -612,6 +826,14 @@ class GameActivity : ImmersiveActivity() {
         previousLineButton?.apply { isEnabled = lineStep > 0; alpha = if (isEnabled) 1f else 0.4f }
         nextLineButton?.apply { isEnabled = lineStep < total; alpha = if (isEnabled) 1f else 0.4f }
         refreshBoard()
+        if (read) {
+            val point = p.teaching?.points?.firstOrNull { it.alternative == alternative && it.branch == branch && it.step == lineStep }
+            val step = if (alternative) p.alternative.getOrNull(lineStep - 1) else p.replies.getOrNull(branch)?.steps?.getOrNull(lineStep - 1)
+            val text = point?.let { Explainer.teachingPart(this, it).text }
+                ?: step?.let { getString(R.string.teaching_step_brief, it.notation, Explainer.fact(this, it)) }
+                ?: Explainer.brief(this, p)
+            narrate("line:${p.revision}:${p.move}:$branch:$lineStep:$alternative", text)
+        }
     }
 
     private fun refreshBoard() {
@@ -663,6 +885,11 @@ class GameActivity : ImmersiveActivity() {
     }
 
     private fun clearPreview() {
+        cancelLesson()
+        teaching.clear()
+        lessonPreview = null
+        lessonParts = emptyList()
+        discussion.clear()
         plans.clear()
         candidates = null
         alternative = false
@@ -675,6 +902,7 @@ class GameActivity : ImmersiveActivity() {
     }
 
     private fun cancelWork() {
+        cancelLesson()
         request++
         job?.cancel()
         professional?.close()
@@ -741,12 +969,15 @@ class GameActivity : ImmersiveActivity() {
             render()
             return
         }
+        cancelLesson()
         plans.stage(move, resetPlayback)
         showPlan(plans.get(plans.active))
+        narrate("choose:${session.revision}:$move", getString(R.string.teaching_choose_prompt))
         work(R.string.analyzing, { check, progress -> session.analyze(aiDepth, move, check, progress) }) { p ->
             plans.put(p, analysisElapsed)
             showPlan(plans.get(plans.active))
-            if (!confirmOn && mode != CoachSession.Mode.REVIEW) commitPending() else render()
+            if (!confirmOn && mode != CoachSession.Mode.REVIEW) commitPending()
+            else { render(); narrate("ready:${p.revision}:${p.move}", getString(R.string.teaching_ready_prompt)) }
         }
     }
 
@@ -754,14 +985,14 @@ class GameActivity : ImmersiveActivity() {
         if (busy) return
         val p = preview ?: return
         if (!session.accepts(p)) { clearPreview(); render(); return }
-        val explanation = Explainer.explain(this, p)
+        val explanation = Explainer.brief(this, p)
         session.commit(p.move, p, explanation)
         feedback = explanation
         lastExplanation = explanation
         clearPreview()
         updateResult()
         saveGame()
-        speak(explanation)
+        narrate("commit:${session.revision}", explanation)
         render()
         maybeAi()
     }
@@ -774,14 +1005,14 @@ class GameActivity : ImmersiveActivity() {
         if (busy || gameDone || scoring()) return
         work(R.string.opponent_thinking, { check, progress -> session.analyzeBest(aiDepth, check, progress) }) { p ->
             if (p != null && session.accepts(p)) {
-                val explanation = Explainer.explain(this, p)
+                val explanation = Explainer.brief(this, p)
                 session.commit(p.move, p, explanation)
                 feedback = explanation
                 lastExplanation = explanation
                 clearPreview()
                 updateResult()
                 saveGame()
-                speak(explanation)
+                narrate("opponent:${session.revision}", getString(R.string.teaching_opponent, p.notation))
             }
             render()
         }
@@ -914,7 +1145,20 @@ class GameActivity : ImmersiveActivity() {
     }
 
     private fun speak(message: String, manual: Boolean = false) {
-        if (manual || prefs.getBoolean("ttsOn", true)) tts?.speak(message, prefs.getFloat("ttsRate", 1f), manual)
+        if (manual || prefs.getBoolean("ttsOn", true)) tts?.speak(message, prefs.getFloat("ttsRate", 1f), true)
+    }
+
+    private fun narrate(key: String, message: String, manual: Boolean = false) {
+        if (!manual && !prefs.getBoolean("ttsOn", true)) return
+        teaching.narration(key, message, automatic = !manual)?.let { speak(it, manual) }
+    }
+
+    private fun cancelLesson() {
+        if (lessonJob?.isActive == true) lessonNotice = getString(R.string.teaching_online_cancelled)
+        lessonGeneration++
+        lessonJob?.cancel()
+        lessonJob = null
+        tts?.stop()
     }
 
     private fun toast(message: Int) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()

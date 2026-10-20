@@ -167,6 +167,9 @@ class ChessEngine : SearchSupport<ChessPosition> {
         }
     }
 
+    fun isSquareAttacked(pos: ChessPosition, square: Int, bySide: Int): Boolean =
+        attacked(pos.board, square, bySide == 0)
+
     /** b 上 sq 是否被 byWhite 方攻击。 */
     private fun attacked(b: IntArray, sq: Int, byWhite: Boolean): Boolean {
         val x = sq % 8

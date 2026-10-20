@@ -62,7 +62,8 @@ class CoachSession<P : Any>(
         val repliesLimited: Boolean,
         val assessment: MoveAssessment,
         val playedStep: EvidenceStep,
-        val alternative: List<EvidenceStep>
+        val alternative: List<EvidenceStep>,
+        val teaching: TeachingAnalysis? = null
     )
 
     private val initial: P = engine.copyPosition(start ?: engine.initialPosition())
@@ -124,7 +125,7 @@ class CoachSession<P : Any>(
             applied.status, assessment.loss, assessment.grade, bestNotation, replies, analysis,
             response?.completedDepth ?: 0, response?.limited ?: (!ended && remaining == 0), assessment,
             EvidenceStep(move, applied.notation, engine.sideToMove(source), applied.captured, applied.check, applied.status),
-            alternative)
+            alternative, TeachingAnalysis.create(engine, source, move, replies, alternative, cancelled))
     }
 
     private fun evidenceSteps(source: P, moves: List<Move>, cancelled: () -> Unit): List<EvidenceStep> {
